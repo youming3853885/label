@@ -345,9 +345,20 @@ export function AnnotatorView() {
                 onMouseDown={onMouseDown}
                 onMouseMove={onMouseMove}
                 onMouseUp={onMouseUp}
+                onTouchStart={onMouseDown}
+                onTouchMove={onMouseMove}
+                onTouchEnd={onMouseUp}
               >
                 <Layer>
-                  <KImage image={img} width={page.width} height={page.height} />
+                  {/* listening=false makes the image transparent to mouse
+                      events — clicks pass through to the Stage handlers
+                      so dragging-to-draw works on top of the page image. */}
+                  <KImage
+                    image={img}
+                    width={page.width}
+                    height={page.height}
+                    listening={false}
+                  />
                   {boxes.map((b) => {
                     const color = BOX_TYPE_INFO[b.type].color;
                     const isSelected = selected?.id === b.id;
