@@ -54,6 +54,7 @@ export interface Box {
   type: BoxType;
   bbox: { x: number; y: number; w: number; h: number };
   question_number: number | null;
+  sub_number: number | null;
   option_letter: string | null;
   difficulty: Difficulty | null;
   question_type: string | null;

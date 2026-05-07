@@ -73,13 +73,18 @@ export function AnnotatorView() {
   // work: stem → its options → its answer → its solution → next stem.
   // Persisted to localStorage per-book so it survives page navigation.
   const [currentQInPass, setCurrentQInPass] = useState<number | null>(null);
-  // Hydrate from localStorage when book loads.
+  // Companion sticky for 題組 sub_number (e.g., Q6 sub=2 means 「第 6 題的
+  // 第 (2) 小題」). Same persistence pattern.
+  const [currentSubInPass, setCurrentSubInPass] = useState<number | null>(null);
+  // Hydrate Q + sub stickies from localStorage when book loads.
   useEffect(() => {
     if (typeof window === "undefined" || !params.id) return;
-    const v = localStorage.getItem(`label.stickyQ.${params.id}`);
-    setCurrentQInPass(v ? Number(v) : null);
+    const q = localStorage.getItem(`label.stickyQ.${params.id}`);
+    const s = localStorage.getItem(`label.stickySub.${params.id}`);
+    setCurrentQInPass(q ? Number(q) : null);
+    setCurrentSubInPass(s ? Number(s) : null);
   }, [params.id]);
-  // Persist whenever it changes.
+  // Persist whenever they change.
   useEffect(() => {
     if (typeof window === "undefined" || !params.id) return;
     if (currentQInPass == null) {
@@ -88,6 +93,14 @@ export function AnnotatorView() {
       localStorage.setItem(`label.stickyQ.${params.id}`, String(currentQInPass));
     }
   }, [params.id, currentQInPass]);
+  useEffect(() => {
+    if (typeof window === "undefined" || !params.id) return;
+    if (currentSubInPass == null) {
+      localStorage.removeItem(`label.stickySub.${params.id}`);
+    } else {
+      localStorage.setItem(`label.stickySub.${params.id}`, String(currentSubInPass));
+    }
+  }, [params.id, currentSubInPass]);
 
   // Load book + all pages + this page + boxes
   useEffect(() => {
@@ -235,18 +248,28 @@ export function AnnotatorView() {
       // Question-number resolution rules:
       //   answer pass         → use pairingQNum (the dropdown choice)
       //   question pass:
-      //     type=question     → auto-increment book-wide; mark this as "currentQ"
-      //     other types       → inherit from currentQInPass (most-recent stem
-      //                         labeled in this session; spans pages)
+      //     type=question     → auto-increment book-wide IF no sticky sub-
+      //                         number, OR keep same Q if labeling sub-question
+      //                         (sticky sub indicates 題組 in progress).
+      //                         Mark as "currentQ" sticky.
+      //     other types       → inherit from currentQInPass + currentSubInPass.
       let qnum: number | null = null;
+      let snum: number | null = null;
       let nextCurrentQ = currentQInPass;
+      let nextCurrentSub = currentSubInPass;
       if (pass === "answer") {
         qnum = pairingQNum;
+        snum = currentSubInPass;
       } else if (activeType === "question") {
+        // If user explicitly entered a pendingNumber, use that. Otherwise
+        // auto-increment OR keep same Q if we're mid-題組 with sticky sub.
         qnum = pendingNumber ?? nextQuestionNumber;
+        snum = null; // main stem of a new Q resets sub
         nextCurrentQ = qnum;
+        nextCurrentSub = null;
       } else {
         qnum = currentQInPass;
+        snum = currentSubInPass;
       }
 
       const { data, error } = await sb
@@ -257,6 +280,7 @@ export function AnnotatorView() {
           type: activeType,
           bbox,
           question_number: qnum,
+          sub_number: snum,
           annotator_name: annotatorName,
           created_by,
           source: "human",
@@ -270,15 +294,16 @@ export function AnnotatorView() {
       setBoxes((bs) => [...bs, data as Box]);
       setSelected(data as Box);
       setPendingNumber(null);
-      // Update sticky Q-number for question pass.
+      // Update sticky Q-number / sub-number for question pass.
       if (nextCurrentQ !== currentQInPass) setCurrentQInPass(nextCurrentQ);
+      if (nextCurrentSub !== currentSubInPass) setCurrentSubInPass(nextCurrentSub);
 
       // Auto-advance to next Q in answer pass when toggle is on.
       if (pass === "answer" && autoAdvance) {
         advancePairingQ(1);
       }
     },
-    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass],
+    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass],
   );
 
   // Patch (update) an existing box — used for difficulty / qnum / option_letter
@@ -829,12 +854,46 @@ export function AnnotatorView() {
               {currentQInPass != null && (
                 <div>
                   選項/答案/詳解會綁{" "}
-                  <span className="text-ink font-semibold">Q{currentQInPass}</span>
+                  <span className="text-ink font-semibold">
+                    Q{currentQInPass}
+                    {currentSubInPass != null && <span>-({currentSubInPass})</span>}
+                  </span>
                   <button
-                    onClick={() => setCurrentQInPass(null)}
+                    onClick={() => { setCurrentQInPass(null); setCurrentSubInPass(null); }}
                     className="ml-2 text-[10px] text-ink-3 underline hover:text-ink"
                   >
                     重設
+                  </button>
+                </div>
+              )}
+              {/* 題組工具：在 sticky Q 還在的時候，可手動撥到子題 */}
+              {currentQInPass != null && (
+                <div className="flex items-center gap-1 pt-1">
+                  <span className="text-[10px] text-ink-3">題組（子題號）：</span>
+                  <button
+                    onClick={() =>
+                      setCurrentSubInPass((s) => (s == null ? 1 : Math.max(0, s - 1)))
+                    }
+                    className="px-1.5 py-0.5 rounded border border-rule-2 text-[10px]"
+                  >
+                    −
+                  </button>
+                  <span className="text-[10px] text-ink font-mono w-8 text-center">
+                    {currentSubInPass ?? "—"}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setCurrentSubInPass((s) => (s == null ? 1 : s + 1))
+                    }
+                    className="px-1.5 py-0.5 rounded border border-rule-2 text-[10px]"
+                  >
+                    +
+                  </button>
+                  <button
+                    onClick={() => setCurrentSubInPass(null)}
+                    className="px-1.5 py-0.5 rounded border border-rule-2 text-[10px] text-ink-3"
+                  >
+                    清除
                   </button>
                 </div>
               )}
@@ -972,13 +1031,32 @@ function SelectedPanel({
     <div className="border border-rule-2 rounded p-3 space-y-2 bg-rule/20">
       <div className="text-[10px] uppercase tracking-wider text-ink-3">已選 {BOX_TYPE_INFO[box.type].label}</div>
 
-      <label className="block text-[11px] text-ink-3">題號</label>
-      <input
-        type="number"
-        value={box.question_number ?? ""}
-        onChange={(e) => onPatch(box.id, { question_number: e.target.value ? Number(e.target.value) : null })}
-        className="w-full h-8 px-2 rounded border border-rule-2 text-[13px]"
-      />
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[11px] text-ink-3">題號</label>
+          <input
+            type="number"
+            value={box.question_number ?? ""}
+            onChange={(e) => onPatch(box.id, { question_number: e.target.value ? Number(e.target.value) : null })}
+            className="w-full h-8 px-2 rounded border border-rule-2 text-[13px]"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] text-ink-3">子題（選填）</label>
+          <input
+            type="number"
+            placeholder="1, 2, 3..."
+            value={box.sub_number ?? ""}
+            onChange={(e) => onPatch(box.id, { sub_number: e.target.value ? Number(e.target.value) : null })}
+            className="w-full h-8 px-2 rounded border border-rule-2 text-[13px]"
+          />
+        </div>
+      </div>
+      {box.sub_number != null && (
+        <div className="text-[10px] text-ink-3 -mt-1">
+          題組標記：第 {box.question_number} 題的第 ({box.sub_number}) 小題
+        </div>
+      )}
 
       {box.type === "option" && (
         <>
