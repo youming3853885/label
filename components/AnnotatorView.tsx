@@ -43,6 +43,24 @@ export function AnnotatorView() {
   const [busy, setBusy] = useState(false);
   const stageWrapRef = useRef<HTMLDivElement>(null);
 
+  // Cross-page pairing for answer pass.
+  // bookQuestions = every type=question box in this book (for the dropdown).
+  // pairingQNum = which Q the next-drawn answer/solution box gets paired with.
+  // autoAdvance = after saving, jump to the next unpaired Q automatically.
+  type BookQ = {
+    id: string;
+    question_number: number;
+    page_id: string;
+    bbox: { x: number; y: number; w: number; h: number };
+    page_number?: number;
+    page_png_path?: string;
+    page_width?: number;
+    page_height?: number;
+  };
+  const [bookQuestions, setBookQuestions] = useState<BookQ[]>([]);
+  const [pairingQNum, setPairingQNum] = useState<number | null>(null);
+  const [autoAdvance, setAutoAdvance] = useState(false);
+
   // Load book + all pages + this page + boxes
   useEffect(() => {
     if (!annotatorName) return;
@@ -110,14 +128,75 @@ export function AnnotatorView() {
   }, [page]);
 
   // Auto-pick next question number based on existing boxes book-wide.
+  // Use bookQuestions (cross-page) so numbering doesn't reset per page.
   const nextQuestionNumber = useMemo(() => {
-    const max = boxes
-      .filter((b) => b.type === "question" && b.question_number != null)
-      .reduce((m, b) => Math.max(m, b.question_number ?? 0), 0);
+    const max = bookQuestions.reduce(
+      (m, b) => Math.max(m, b.question_number ?? 0),
+      0,
+    );
     return max + 1;
-  }, [boxes]);
+  }, [bookQuestions]);
 
-  // Save a new box. Uses the current activeType + pendingNumber.
+  // Fetch every question box for the book — used by the answer-pass dropdown.
+  // Includes the source page's page_number for the "Q3 (第 X 頁)" hint.
+  useEffect(() => {
+    if (!book) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase()
+        .from("annotation_boxes")
+        .select("id, question_number, page_id, bbox, page:annotation_pages(page_number, png_path, width, height)")
+        .eq("book_id", book.id)
+        .eq("type", "question")
+        .not("question_number", "is", null)
+        .order("question_number");
+      if (cancelled) return;
+      const flat: BookQ[] = ((data as any[]) ?? [])
+        .map((r) => ({
+          id: r.id,
+          question_number: r.question_number,
+          page_id: r.page_id,
+          bbox: r.bbox,
+          page_number: r.page?.page_number,
+          page_png_path: r.page?.png_path,
+          page_width: r.page?.width,
+          page_height: r.page?.height,
+        }));
+      // Dedup by question_number — same number can appear on multiple pages
+      // if user accidentally created duplicates; keep the first.
+      const seen = new Set<number>();
+      const unique = flat.filter((q) => {
+        if (seen.has(q.question_number)) return false;
+        seen.add(q.question_number);
+        return true;
+      });
+      setBookQuestions(unique);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [book, boxes]);
+
+  // When user switches to answer pass, default pairing to the smallest Q.
+  useEffect(() => {
+    if (pass === "answer" && pairingQNum == null && bookQuestions.length > 0) {
+      setPairingQNum(bookQuestions[0].question_number);
+    }
+  }, [pass, bookQuestions, pairingQNum]);
+
+  const pairingQ = useMemo(
+    () => bookQuestions.find((q) => q.question_number === pairingQNum) ?? null,
+    [bookQuestions, pairingQNum],
+  );
+
+  const advancePairingQ = useCallback((delta: 1 | -1) => {
+    if (pairingQNum == null || bookQuestions.length === 0) return;
+    const idx = bookQuestions.findIndex((q) => q.question_number === pairingQNum);
+    const next = bookQuestions[Math.max(0, Math.min(bookQuestions.length - 1, idx + delta))];
+    if (next) setPairingQNum(next.question_number);
+  }, [pairingQNum, bookQuestions]);
+
+  // Save a new box. Uses the current activeType + pairing-question logic.
   const saveBox = useCallback(
     async (bbox: { x: number; y: number; w: number; h: number }) => {
       if (!page || !book || !annotatorName) return;
@@ -125,9 +204,16 @@ export function AnnotatorView() {
       const { data: userData } = await sb.auth.getUser();
       const created_by = userData.user?.id ?? null;
 
-      const qnum =
-        pendingNumber ??
-        (activeType === "question" ? nextQuestionNumber : null);
+      // Question-number resolution rules:
+      //   answer pass        → use pairingQNum (the dropdown choice)
+      //   question pass + question type → auto-increment book-wide
+      //   anything else      → null
+      let qnum: number | null = null;
+      if (pass === "answer") {
+        qnum = pairingQNum;
+      } else if (activeType === "question") {
+        qnum = pendingNumber ?? nextQuestionNumber;
+      }
 
       const { data, error } = await sb
         .from("annotation_boxes")
@@ -150,8 +236,13 @@ export function AnnotatorView() {
       setBoxes((bs) => [...bs, data as Box]);
       setSelected(data as Box);
       setPendingNumber(null);
+
+      // Auto-advance to next Q in answer pass when toggle is on.
+      if (pass === "answer" && autoAdvance) {
+        advancePairingQ(1);
+      }
     },
-    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber],
+    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, pass, pairingQNum, autoAdvance, advancePairingQ],
   );
 
   // Patch (update) an existing box — used for difficulty / qnum / option_letter
@@ -469,15 +560,72 @@ export function AnnotatorView() {
             </button>
           </div>
           {pass === "answer" && (
-            <div className="text-[11px] text-ink-3">
-              先輸入要對應的題號 → 再劃框 → 答案/詳解會跟早頁的題目綁起來
-              <input
-                type="number"
-                placeholder="題號"
-                value={pendingNumber ?? ""}
-                onChange={(e) => setPendingNumber(e.target.value ? Number(e.target.value) : null)}
-                className="mt-2 w-full h-8 px-2 rounded border border-rule-2 text-[13px]"
-              />
+            <div className="space-y-2 border border-rule-2 rounded p-2">
+              {bookQuestions.length === 0 ? (
+                <div className="text-[11px] text-ink-3">
+                  這本書還沒有任何已標題目。先在「題目 Pass」標好題目，再來這。
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-wider text-ink-3">對應題目</span>
+                    <span className="text-[10px] text-ink-3">{bookQuestions.length} 題可選</span>
+                  </div>
+
+                  {pairingQ && (
+                    <div className="text-center py-1">
+                      <div className="serif text-[18px] font-semibold text-ink">Q{pairingQ.question_number}</div>
+                      <div className="text-[10px] text-ink-3">第 {pairingQ.page_number} 頁</div>
+                    </div>
+                  )}
+
+                  {pairingQ && (
+                    <QuestionPreview q={pairingQ} />
+                  )}
+
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => advancePairingQ(-1)}
+                      className="flex-1 px-2 py-1 rounded border border-rule-2 text-[12px] hover:bg-rule/40"
+                    >
+                      ← 上一題
+                    </button>
+                    <button
+                      onClick={() => advancePairingQ(1)}
+                      className="flex-1 px-2 py-1 rounded border border-rule-2 text-[12px] hover:bg-rule/40"
+                    >
+                      下一題 →
+                    </button>
+                  </div>
+
+                  <select
+                    value={pairingQNum ?? ""}
+                    onChange={(e) => setPairingQNum(e.target.value ? Number(e.target.value) : null)}
+                    className="w-full h-8 px-2 rounded border border-rule-2 text-[12px]"
+                  >
+                    <option value="">— 直接選題號 —</option>
+                    {bookQuestions.map((q) => (
+                      <option key={q.question_number} value={q.question_number}>
+                        Q{q.question_number}（第 {q.page_number} 頁）
+                      </option>
+                    ))}
+                  </select>
+
+                  <label className="flex items-center gap-1.5 text-[11px] text-ink-3 pt-1">
+                    <input
+                      type="checkbox"
+                      checked={autoAdvance}
+                      onChange={(e) => setAutoAdvance(e.target.checked)}
+                      className="w-3.5 h-3.5"
+                    />
+                    畫完一格自動跳下一題
+                  </label>
+
+                  <div className="text-[10px] text-ink-3 pt-1 border-t border-rule">
+                    畫的下個框會綁定 <span className="text-ink font-semibold">Q{pairingQNum ?? "—"}</span>
+                  </div>
+                </>
+              )}
             </div>
           )}
           {pass === "question" && (
@@ -523,6 +671,76 @@ export function AnnotatorView() {
         </div>
       </div>
     </main>
+  );
+}
+
+/** Tiny preview of a question cropped from its source page PNG. Loads the
+ *  page image once via Supabase Storage and uses CSS positioning to show
+ *  only the bbox region — no canvas needed. */
+function QuestionPreview({
+  q,
+}: {
+  q: {
+    page_id: string;
+    page_png_path?: string;
+    page_width?: number;
+    page_height?: number;
+    bbox: { x: number; y: number; w: number; h: number };
+  };
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!q.page_png_path) return;
+    let cancelled = false;
+    let objUrl: string | null = null;
+    (async () => {
+      const { data } = await supabase().storage.from(BUCKET).download(q.page_png_path!);
+      if (cancelled || !data) return;
+      objUrl = URL.createObjectURL(data);
+      setSrc(objUrl);
+    })();
+    return () => {
+      cancelled = true;
+      if (objUrl) URL.revokeObjectURL(objUrl);
+    };
+  }, [q.page_png_path]);
+
+  if (!q.page_width || !q.page_height) return null;
+
+  // Render at 220px wide; height keeps the bbox aspect ratio.
+  const dispW = 220;
+  const dispH = Math.round(dispW * (q.bbox.h / q.bbox.w));
+  // CSS trick: the image is positioned and scaled so that q.bbox covers the
+  // visible div (overflow: hidden clips the rest).
+  const scaleFactor = dispW / q.bbox.w;
+
+  return (
+    <div
+      className="relative overflow-hidden border border-rule-2 rounded bg-white mx-auto"
+      style={{ width: dispW, height: dispH }}
+    >
+      {!src && (
+        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-ink-3">
+          載入縮圖…
+        </div>
+      )}
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt=""
+          style={{
+            position: "absolute",
+            left: -q.bbox.x * scaleFactor,
+            top: -q.bbox.y * scaleFactor,
+            width: q.page_width * scaleFactor,
+            height: q.page_height * scaleFactor,
+            maxWidth: "none",
+          }}
+        />
+      )}
+    </div>
   );
 }
 
