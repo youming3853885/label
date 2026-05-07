@@ -422,9 +422,38 @@ export function AnnotatorView() {
       <div className="border-b border-rule bg-paper">
         <div className="max-w-[1600px] mx-auto px-6 h-12 flex items-center gap-4">
           <Link href={`/book/${book.id}`} className="text-[13px] text-ink-3 hover:text-ink">← 回書本</Link>
-          <div className="flex-1 serif text-[14px] truncate">
-            {book.title} · p.{page.page_number}/{book.total_pages}
-          </div>
+          <div className="flex-1 serif text-[14px] truncate">{book.title}</div>
+
+          {/* Page navigation — does not change page status, just moves */}
+          {(() => {
+            const idx = allPages.findIndex((p) => p.id === page.id);
+            const prev = idx > 0 ? allPages[idx - 1] : null;
+            const next = idx >= 0 && idx < allPages.length - 1 ? allPages[idx + 1] : null;
+            return (
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => prev && router.push(`/book/${book.id}/page/${prev.id}`)}
+                  disabled={!prev}
+                  title="上一頁（不改狀態）"
+                  className="px-2 h-7 rounded border border-rule-2 text-[12px] hover:bg-rule/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  ← 上一頁
+                </button>
+                <span className="text-[12px] text-ink-3 tabular-nums px-1">
+                  p.{page.page_number} / {book.total_pages}
+                </span>
+                <button
+                  onClick={() => next && router.push(`/book/${book.id}/page/${next.id}`)}
+                  disabled={!next}
+                  title="下一頁（不改狀態）"
+                  className="px-2 h-7 rounded border border-rule-2 text-[12px] hover:bg-rule/40 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  下一頁 →
+                </button>
+              </div>
+            );
+          })()}
+
           <span className="text-[11px] text-ink-3">標註人：{annotatorName}</span>
           <button
             onClick={() => { localStorage.removeItem("label.annotator_name"); window.location.reload(); }}
