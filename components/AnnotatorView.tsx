@@ -71,7 +71,23 @@ export function AnnotatorView() {
   // stem's Q-number. So labeling Q2 then drawing an option/answer/solution
   // automatically pairs them with Q2 — matching how teachers naturally
   // work: stem → its options → its answer → its solution → next stem.
+  // Persisted to localStorage per-book so it survives page navigation.
   const [currentQInPass, setCurrentQInPass] = useState<number | null>(null);
+  // Hydrate from localStorage when book loads.
+  useEffect(() => {
+    if (typeof window === "undefined" || !params.id) return;
+    const v = localStorage.getItem(`label.stickyQ.${params.id}`);
+    setCurrentQInPass(v ? Number(v) : null);
+  }, [params.id]);
+  // Persist whenever it changes.
+  useEffect(() => {
+    if (typeof window === "undefined" || !params.id) return;
+    if (currentQInPass == null) {
+      localStorage.removeItem(`label.stickyQ.${params.id}`);
+    } else {
+      localStorage.setItem(`label.stickyQ.${params.id}`, String(currentQInPass));
+    }
+  }, [params.id, currentQInPass]);
 
   // Load book + all pages + this page + boxes
   useEffect(() => {
@@ -966,14 +982,31 @@ function SelectedPanel({
 
       {box.type === "option" && (
         <>
-          <label className="block text-[11px] text-ink-3">選項字母</label>
+          <label className="block text-[11px] text-ink-3">
+            選項字母 / 群組
+            <span className="block text-[10px] text-ink-4">
+              單個（A）= 一框一選項；群組（ABCD）= 一框含所有選項，AI 抽取時自動拆
+            </span>
+          </label>
           <select
             value={box.option_letter ?? ""}
             onChange={(e) => onPatch(box.id, { option_letter: e.target.value || null })}
             className="w-full h-8 px-2 rounded border border-rule-2 text-[13px]"
           >
             <option value="">—</option>
-            {["A","B","C","D","E"].map((k) => <option key={k} value={k}>{k}</option>)}
+            <optgroup label="單個選項">
+              {["A","B","C","D","E","F"].map((k) => (
+                <option key={k} value={k}>{k}</option>
+              ))}
+            </optgroup>
+            <optgroup label="群組（一框多選項）">
+              <option value="ABCD">ABCD（4 選項）</option>
+              <option value="ABCDE">ABCDE（5 選項）</option>
+              <option value="ABCDEF">ABCDEF（6 選項）</option>
+              <option value="1234">1234（4 選項，數字編號）</option>
+              <option value="12345">12345（5 選項）</option>
+              <option value="123456">123456（6 選項）</option>
+            </optgroup>
           </select>
         </>
       )}
