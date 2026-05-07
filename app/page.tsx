@@ -137,43 +137,56 @@ function Topbar({ email }: { email?: string }) {
   );
 }
 
+// Shared annotator account — every teacher uses the same auth credentials.
+// Per-teacher attribution is via the typed `annotator_name` they enter
+// after login (NameModal, stored in localStorage and attached to each box).
+const SHARED_EMAIL = "annotator@label.local";
+
 function LoginCard() {
-  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const send = async () => {
+  const submit = async () => {
     setBusy(true);
     setMsg(null);
-    const { error } = await supabase().auth.signInWithOtp({
-      email: email.trim(),
-      options: { emailRedirectTo: window.location.origin },
+    const { error } = await supabase().auth.signInWithPassword({
+      email: SHARED_EMAIL,
+      password: password.trim(),
     });
     setBusy(false);
-    if (error) setMsg(error.message);
-    else setMsg("登入連結已寄出，請查收信箱。");
+    if (error) {
+      setMsg("密碼不對，請再試一次。");
+    } else {
+      // session refreshes automatically via onAuthStateChange in the page.
+    }
   };
 
   return (
     <main className="min-h-screen bg-paper flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
-        <div className="serif text-[24px] font-semibold mb-1">label</div>
-        <p className="text-[13px] text-ink-3 mb-6">輸入你的 email，會寄一封登入連結到你信箱。</p>
+        <div className="serif text-[28px] font-semibold mb-1">label · 標籤工具</div>
+        <p className="text-[13.5px] text-ink-3 mb-6">
+          輸入訪問密碼即可開始標註。<br />
+          下一步會請你輸入個人姓名作為標註負責人記錄。
+        </p>
         <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="teacher@example.com"
-          className="w-full h-10 px-3 rounded-md border border-rule-2 text-[13.5px]"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && password.trim() && submit()}
+          placeholder="訪問密碼"
+          autoFocus
+          className="w-full h-11 px-3 rounded-md border border-rule-2 text-[14px] tracking-widest"
         />
         <button
-          onClick={send}
-          disabled={busy || !email.trim()}
-          className="mt-3 w-full h-10 rounded-md bg-ink text-paper text-[13px] disabled:opacity-50"
+          onClick={submit}
+          disabled={busy || !password.trim()}
+          className="mt-3 w-full h-11 rounded-md bg-ink text-paper text-[14px] disabled:opacity-50"
         >
-          {busy ? "寄送中…" : "寄登入連結"}
+          {busy ? "登入中…" : "進入"}
         </button>
-        {msg && <p className="mt-3 text-[12px] text-ink-3">{msg}</p>}
+        {msg && <p className="mt-3 text-[12.5px] text-danger">{msg}</p>}
       </div>
     </main>
   );
