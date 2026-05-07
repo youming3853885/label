@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { Stage, Layer, Image as KImage, Rect, Text, Group } from "react-konva";
+import { Stage, Layer, Image as KImage, Rect, Text, Group, Transformer } from "react-konva";
+import type Konva from "konva";
 import { supabase } from "@/lib/supabase";
 
 const BUCKET = "annotation-source";
@@ -42,6 +43,10 @@ export function AnnotatorView() {
   const [pass, setPass] = useState<"question" | "answer">("question");
   const [busy, setBusy] = useState(false);
   const stageWrapRef = useRef<HTMLDivElement>(null);
+  const transformerRef = useRef<Konva.Transformer | null>(null);
+  // Map of box id → Konva Rect node, populated via ref={} so Transformer
+  // can attach to whichever box is currently selected.
+  const rectRefs = useRef<Map<string, Konva.Rect>>(new Map());
 
   // Cross-page pairing for answer pass.
   // bookQuestions = every type=question box in this book (for the dropdown).
@@ -396,6 +401,24 @@ export function AnnotatorView() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selected, patchBox, deleteBox, verifyPage, annotatorName, allPages, page, book, router]);
 
+  // Attach the Konva Transformer to the currently selected box's Rect node.
+  // Transformer renders 8 resize handles + lets the user drag the rect to
+  // move it. Detach when nothing is selected.
+  useEffect(() => {
+    const tr = transformerRef.current;
+    if (!tr) return;
+    if (selected) {
+      const node = rectRefs.current.get(selected.id);
+      if (node) {
+        tr.nodes([node]);
+        tr.getLayer()?.batchDraw();
+        return;
+      }
+    }
+    tr.nodes([]);
+    tr.getLayer()?.batchDraw();
+  }, [selected, boxes]);
+
   if (!annotatorName) return <NameModal onReady={setReady} />;
   if (!book || !page) return <div className="p-10 text-ink-3">載入中…</div>;
 
@@ -510,12 +533,12 @@ export function AnnotatorView() {
                     const color = BOX_TYPE_INFO[b.type].color;
                     const isSelected = selected?.id === b.id;
                     return (
-                      <Group
-                        key={b.id}
-                        onClick={(e) => { e.cancelBubble = true; setSelected(b); }}
-                        onTap={(e) => { e.cancelBubble = true; setSelected(b); }}
-                      >
+                      <Group key={b.id}>
                         <Rect
+                          ref={(node) => {
+                            if (node) rectRefs.current.set(b.id, node);
+                            else rectRefs.current.delete(b.id);
+                          }}
                           x={b.bbox.x}
                           y={b.bbox.y}
                           width={b.bbox.w}
@@ -523,6 +546,50 @@ export function AnnotatorView() {
                           stroke={color}
                           strokeWidth={isSelected ? 4 : 2}
                           fill={`${color}1A`}
+                          draggable={isSelected}
+                          // Click on rect → select it (cancel bubble so Stage's
+                          // onMouseDown doesn't start a fresh draw).
+                          onMouseDown={(e) => {
+                            e.cancelBubble = true;
+                            setSelected(b);
+                          }}
+                          onTap={(e) => {
+                            e.cancelBubble = true;
+                            setSelected(b);
+                          }}
+                          // Drag = move (only when selected via draggable above).
+                          onDragEnd={(e) => {
+                            const node = e.target;
+                            patchBox(b.id, {
+                              bbox: {
+                                x: Math.round(node.x()),
+                                y: Math.round(node.y()),
+                                w: Math.round(b.bbox.w),
+                                h: Math.round(b.bbox.h),
+                              },
+                            });
+                          }}
+                          // Resize via Transformer handles → bake the scale
+                          // back into width/height + reset scale to 1.
+                          onTransformEnd={(e) => {
+                            const node = e.target as Konva.Rect;
+                            const sx = node.scaleX();
+                            const sy = node.scaleY();
+                            const newW = Math.max(8, Math.round(node.width() * sx));
+                            const newH = Math.max(8, Math.round(node.height() * sy));
+                            node.scaleX(1);
+                            node.scaleY(1);
+                            node.width(newW);
+                            node.height(newH);
+                            patchBox(b.id, {
+                              bbox: {
+                                x: Math.round(node.x()),
+                                y: Math.round(node.y()),
+                                w: newW,
+                                h: newH,
+                              },
+                            });
+                          }}
                         />
                         <Text
                           x={b.bbox.x + 4}
@@ -536,10 +603,32 @@ export function AnnotatorView() {
                           fontSize={14}
                           fontStyle="bold"
                           fill={color}
+                          listening={false}
                         />
                       </Group>
                     );
                   })}
+                  {/* Transformer renders 8 resize handles + edge lines for the
+                      currently selected box. boundBoxFunc enforces a minimum size. */}
+                  <Transformer
+                    ref={transformerRef}
+                    rotateEnabled={false}
+                    keepRatio={false}
+                    enabledAnchors={[
+                      "top-left", "top-center", "top-right",
+                      "middle-left", "middle-right",
+                      "bottom-left", "bottom-center", "bottom-right",
+                    ]}
+                    anchorSize={10}
+                    anchorStroke="#1A1A1A"
+                    anchorFill="#FFFFFF"
+                    borderStroke="#1A1A1A"
+                    borderStrokeWidth={1}
+                    boundBoxFunc={(_oldBox, newBox) => {
+                      if (newBox.width < 10 || newBox.height < 10) return _oldBox;
+                      return newBox;
+                    }}
+                  />
                   {drawing && (
                     <Rect
                       x={Math.min(drawing.x, drawing.x + drawing.w)}
