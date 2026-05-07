@@ -379,10 +379,22 @@ export function AnnotatorView() {
         setPass((p) => (p === "question" ? "answer" : "question"));
         return;
       }
+      // Alt+Left / Alt+Right = prev / next page (no status change)
+      if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+        e.preventDefault();
+        const idx = allPages.findIndex((p) => p.id === page?.id);
+        const target = e.key === "ArrowLeft"
+          ? (idx > 0 ? allPages[idx - 1] : null)
+          : (idx >= 0 && idx < allPages.length - 1 ? allPages[idx + 1] : null);
+        if (target && book) {
+          router.push(`/book/${book.id}/page/${target.id}`);
+        }
+        return;
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, patchBox, deleteBox, verifyPage, annotatorName]);
+  }, [selected, patchBox, deleteBox, verifyPage, annotatorName, allPages, page, book, router]);
 
   if (!annotatorName) return <NameModal onReady={setReady} />;
   if (!book || !page) return <div className="p-10 text-ink-3">載入中…</div>;
@@ -759,7 +771,8 @@ export function AnnotatorView() {
             <div>Q/O/A/S/F/X/U — 切類型</div>
             <div>1/2/3 — 設選中題的難易度（簡單/中等/困難）</div>
             <div>Tab — 切換 題目/答案 Pass</div>
-            <div>Enter — 此頁確認完</div>
+            <div>Enter — 此頁確認完，跳下一頁</div>
+            <div>Alt + ← / → — 上一頁／下一頁（不改狀態）</div>
             <div>Delete — 刪除選中框</div>
             <div>Esc — 取消選擇</div>
           </div>
