@@ -4,7 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Stage, Layer, Image as KImage, Rect, Text, Group } from "react-konva";
-import { supabase, pageImageUrl } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
+
+const BUCKET = "annotation-source";
 import {
   Box, BoxType, Difficulty, Page, Book,
   BOX_TYPE_INFO, DIFFICULTY_KEYS, DIFFICULTY_LABEL,
@@ -27,6 +29,7 @@ export function AnnotatorView() {
   const [allPages, setAllPages] = useState<Page[]>([]);
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [imgErr, setImgErr] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
 
   // Drawing state
@@ -57,27 +60,41 @@ export function AnnotatorView() {
     });
   }, [annotatorName, params.id, params.pageId]);
 
-  // Load image for the page
+  // Load image for the page using the Supabase JS storage client.
+  // Avoids hand-crafting an /authenticated/... URL (which can 400 depending
+  // on the bucket's auth policy) — download() reliably attaches the session.
   useEffect(() => {
     if (!page) return;
-    const url = pageImageUrl(page.png_path);
-    const sb = supabase();
-    sb.auth.getSession().then(({ data: { session } }) => {
-      // Authenticated images go through signed download because anon key alone
-      // doesn't pass through `authenticated` route. Fetch with bearer + blob URL.
-      const headers = session?.access_token
-        ? { Authorization: `Bearer ${session.access_token}` }
-        : undefined;
-      fetch(url, { headers })
-        .then((r) => (r.ok ? r.blob() : Promise.reject(new Error(`${r.status}`))))
-        .then((blob) => {
-          const objUrl = URL.createObjectURL(blob);
-          const im = new window.Image();
-          im.onload = () => setImg(im);
-          im.src = objUrl;
-        })
-        .catch((e) => console.error("image load failed", e));
-    });
+    let cancelled = false;
+    setImg(null);
+    setImgErr(null);
+    (async () => {
+      try {
+        const { data, error } = await supabase()
+          .storage.from(BUCKET).download(page.png_path);
+        if (error || !data) {
+          throw error ?? new Error("empty blob");
+        }
+        if (cancelled) return;
+        const objUrl = URL.createObjectURL(data);
+        const im = new window.Image();
+        im.onload = () => {
+          if (!cancelled) setImg(im);
+        };
+        im.onerror = () => {
+          if (!cancelled) setImgErr("圖片解析失敗");
+        };
+        im.src = objUrl;
+      } catch (e: any) {
+        console.error("page image download failed", e);
+        if (!cancelled) {
+          setImgErr(`下載失敗：${e?.message ?? String(e)}`);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [page]);
 
   // Compute display scale so the page image fits ~70% of viewport width
@@ -381,7 +398,24 @@ export function AnnotatorView() {
               </Stage>
             </div>
           )}
-          {!img && <div className="text-ink-3 p-10">載入頁面圖片…</div>}
+          {!img && !imgErr && (
+            <div className="text-ink-3 p-10">載入頁面圖片…</div>
+          )}
+          {imgErr && (
+            <div className="p-10 text-danger text-[13px] space-y-2">
+              <div className="font-medium">頁面圖片載入失敗</div>
+              <div className="text-ink-3 text-[12px]">{imgErr}</div>
+              <div className="text-ink-3 text-[11px] font-mono break-all">
+                path: {page.png_path}
+              </div>
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-2 px-3 py-1.5 rounded border border-rule-2 text-[12px]"
+              >
+                重新整理
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Sidebar */}
