@@ -61,6 +61,12 @@ export function AnnotatorView() {
   const [pairingQNum, setPairingQNum] = useState<number | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
 
+  // In question pass, every box drawn after a question stem inherits that
+  // stem's Q-number. So labeling Q2 then drawing an option/answer/solution
+  // automatically pairs them with Q2 — matching how teachers naturally
+  // work: stem → its options → its answer → its solution → next stem.
+  const [currentQInPass, setCurrentQInPass] = useState<number | null>(null);
+
   // Load book + all pages + this page + boxes
   useEffect(() => {
     if (!annotatorName) return;
@@ -205,14 +211,20 @@ export function AnnotatorView() {
       const created_by = userData.user?.id ?? null;
 
       // Question-number resolution rules:
-      //   answer pass        → use pairingQNum (the dropdown choice)
-      //   question pass + question type → auto-increment book-wide
-      //   anything else      → null
+      //   answer pass         → use pairingQNum (the dropdown choice)
+      //   question pass:
+      //     type=question     → auto-increment book-wide; mark this as "currentQ"
+      //     other types       → inherit from currentQInPass (most-recent stem
+      //                         labeled in this session; spans pages)
       let qnum: number | null = null;
+      let nextCurrentQ = currentQInPass;
       if (pass === "answer") {
         qnum = pairingQNum;
       } else if (activeType === "question") {
         qnum = pendingNumber ?? nextQuestionNumber;
+        nextCurrentQ = qnum;
+      } else {
+        qnum = currentQInPass;
       }
 
       const { data, error } = await sb
@@ -236,13 +248,15 @@ export function AnnotatorView() {
       setBoxes((bs) => [...bs, data as Box]);
       setSelected(data as Box);
       setPendingNumber(null);
+      // Update sticky Q-number for question pass.
+      if (nextCurrentQ !== currentQInPass) setCurrentQInPass(nextCurrentQ);
 
       // Auto-advance to next Q in answer pass when toggle is on.
       if (pass === "answer" && autoAdvance) {
         advancePairingQ(1);
       }
     },
-    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, pass, pairingQNum, autoAdvance, advancePairingQ],
+    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass],
   );
 
   // Patch (update) an existing box — used for difficulty / qnum / option_letter
@@ -629,8 +643,28 @@ export function AnnotatorView() {
             </div>
           )}
           {pass === "question" && (
-            <div className="text-[11px] text-ink-3">
-              下個題目自動編號 <span className="text-ink font-semibold">Q{nextQuestionNumber}</span>
+            <div className="text-[11px] text-ink-3 space-y-1">
+              <div>
+                下個 <span className="text-ann-question font-semibold">題幹</span> 自動編號{" "}
+                <span className="text-ink font-semibold">Q{nextQuestionNumber}</span>
+              </div>
+              {currentQInPass != null && (
+                <div>
+                  選項/答案/詳解會綁{" "}
+                  <span className="text-ink font-semibold">Q{currentQInPass}</span>
+                  <button
+                    onClick={() => setCurrentQInPass(null)}
+                    className="ml-2 text-[10px] text-ink-3 underline hover:text-ink"
+                  >
+                    重設
+                  </button>
+                </div>
+              )}
+              {currentQInPass == null && (
+                <div className="text-ink-4">
+                  （先標一個題幹，後面同題的選項/答案/詳解會自動配對）
+                </div>
+              )}
             </div>
           )}
 
