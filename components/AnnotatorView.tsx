@@ -60,6 +60,7 @@ export function AnnotatorView() {
   const [bookQuestions, setBookQuestions] = useState<BookQ[]>([]);
   const [pairingQNum, setPairingQNum] = useState<number | null>(null);
   const [autoAdvance, setAutoAdvance] = useState(false);
+  const [pairingFilter, setPairingFilter] = useState("");
 
   // In question pass, every box drawn after a question stem inherits that
   // stem's Q-number. So labeling Q2 then drawing an option/answer/solution
@@ -612,18 +613,49 @@ export function AnnotatorView() {
                     </button>
                   </div>
 
+                  {bookQuestions.length > 8 && (
+                    <input
+                      type="text"
+                      value={pairingFilter}
+                      onChange={(e) => setPairingFilter(e.target.value)}
+                      placeholder="搜尋（題號或頁數）"
+                      className="w-full h-7 px-2 rounded border border-rule-2 text-[11px]"
+                    />
+                  )}
+
                   <select
                     value={pairingQNum ?? ""}
                     onChange={(e) => setPairingQNum(e.target.value ? Number(e.target.value) : null)}
-                    className="w-full h-8 px-2 rounded border border-rule-2 text-[12px]"
+                    size={Math.min(8, Math.max(3, bookQuestions.length))}
+                    className="w-full px-2 rounded border border-rule-2 text-[12px]"
                   >
-                    <option value="">— 直接選題號 —</option>
-                    {bookQuestions.map((q) => (
-                      <option key={q.question_number} value={q.question_number}>
-                        Q{q.question_number}（第 {q.page_number} 頁）
-                      </option>
-                    ))}
+                    {(() => {
+                      const f = pairingFilter.trim();
+                      const filtered = !f
+                        ? bookQuestions
+                        : bookQuestions.filter((q) =>
+                            String(q.question_number).includes(f) ||
+                            String(q.page_number ?? "").includes(f),
+                          );
+                      if (filtered.length === 0) {
+                        return <option disabled>沒有符合的題</option>;
+                      }
+                      return filtered.map((q) => (
+                        <option key={q.question_number} value={q.question_number}>
+                          Q{q.question_number}（第 {q.page_number} 頁）
+                        </option>
+                      ));
+                    })()}
                   </select>
+
+                  {pairingQ && pairingQ.page_id !== page.id && (
+                    <button
+                      onClick={() => router.push(`/book/${book.id}/page/${pairingQ.page_id}`)}
+                      className="w-full px-2 py-1 rounded border border-rule-2 text-[11px] text-ink-3 hover:bg-rule/40"
+                    >
+                      🔍 跳到 Q{pairingQNum} 所在的第 {pairingQ.page_number} 頁
+                    </button>
+                  )}
 
                   <label className="flex items-center gap-1.5 text-[11px] text-ink-3 pt-1">
                     <input
