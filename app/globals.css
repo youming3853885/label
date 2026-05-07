@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  background: theme(colors.paper);
+  color: theme(colors.ink);
+  font-feature-settings: "ss01" on;
+}
+
+.serif { font-family: theme(fontFamily.serif); }
