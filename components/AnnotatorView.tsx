@@ -423,7 +423,7 @@ export function AnnotatorView() {
       // Letter shortcuts to set type
       const map: Record<string, BoxType> = {
         q: "question", o: "option", a: "answer",
-        s: "solution", f: "figure", x: "skip", u: "unit_title",
+        s: "solution", f: "figure", x: "skip", e: "unit_title",
       };
       if (e.key.toLowerCase() in map) {
         setActiveType(map[e.key.toLowerCase()]);

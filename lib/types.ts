@@ -71,7 +71,7 @@ export const BOX_TYPE_INFO: Record<BoxType, { label: string; key: string; color:
   solution:    { label: "詳解",   key: "S", color: "#A855F7" },
   figure:      { label: "圖片",   key: "F", color: "#EAB308" },
   skip:        { label: "略過",   key: "X", color: "#6B7280" },
-  unit_title:  { label: "單元概念", key: "U", color: "#EC4899" },
+  unit_title:  { label: "單元概念", key: "E", color: "#EC4899" },
 };
 
 export const DIFFICULTY_KEYS: Record<string, Difficulty> = {
