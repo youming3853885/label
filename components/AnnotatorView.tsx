@@ -14,18 +14,19 @@ import {
 } from "@/lib/types";
 import { NameModal } from "./NameModal";
 
-// Of all type='question' boxes on this page, return the one whose AABB
-// intersects the given bbox the most (by area). Returns null if none
-// overlap. Used so a freshly-drawn option/answer/solution/figure box
-// auto-inherits the question number of the stem it sits on top of.
-function findUnderlyingQuestion(
+// Of all boxes carrying a question_number on this page, return the one
+// whose AABB intersects the given bbox the most (by area). Returns null
+// if none overlap. Drawing a new box on top of an existing labeled box
+// — regardless of type — inherits that box's question_number +
+// sub_number. This generalizes the "stem → its options/answers" pairing
+// to any stack-on-top relationship the annotator draws.
+function findUnderlyingBox(
   bbox: { x: number; y: number; w: number; h: number },
   boxes: Box[],
 ): Box | null {
   let best: Box | null = null;
   let bestArea = 0;
   for (const b of boxes) {
-    if (b.type !== "question") continue;
     if (b.question_number == null) continue;
     const ix = Math.max(
       0,
@@ -335,18 +336,20 @@ export function AnnotatorView() {
         snum = currentSubInPass;
       }
 
-      // Overlap inheritance: if a non-stem, non-concept box (option/answer/
-      // solution/figure/skip) is drawn on top of an existing question stem
-      // on this same page, adopt that stem's question_number + sub_number.
-      // Pick the question with the largest intersection area when several
-      // overlap. This lets the annotator just draw an option box anywhere
-      // inside Q5's region — it auto-pairs to Q5 without manually setting
-      // pendingNumber or relying on sticky-from-last-stem.
-      if (activeType !== "question" && activeType !== "unit_title") {
-        const overlap = findUnderlyingQuestion(bbox, boxes);
-        if (overlap) {
-          qnum = overlap.question_number;
-          snum = overlap.sub_number;
+      // Overlap inheritance: if the new box overlaps any existing labeled
+      // box on this page, adopt that box's question_number + sub_number.
+      // Picks the largest-intersection one when several overlap. Applies
+      // to every type — including question itself — so re-drawing a stem
+      // on top of an existing one keeps its number rather than auto-
+      // incrementing into a gap.
+      const overlap = findUnderlyingBox(bbox, boxes);
+      if (overlap) {
+        qnum = overlap.question_number;
+        snum = overlap.sub_number;
+        if (activeType === "question") {
+          // Stem inherited a number → keep sticky chain on that number.
+          nextCurrentQ = qnum;
+          nextCurrentSub = snum;
         }
       }
 
