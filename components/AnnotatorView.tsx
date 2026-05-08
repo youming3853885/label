@@ -504,7 +504,12 @@ export function AnnotatorView() {
   };
 
   const onMouseDown = (e: any) => {
-    if (e.target !== e.target.getStage()) return; // clicked an existing rect
+    // Skip if click landed on an existing rect AND Shift is NOT held.
+    // Shift+drag overrides — used when the new box should overlap an existing
+    // one (e.g., 圖片 inside a 單元概念 region).
+    const isOnRect = e.target !== e.target.getStage();
+    const shift = e.evt?.shiftKey;
+    if (isOnRect && !shift) return;
     const { x, y } = stagePos(e);
     setDrawing({ x, y, w: 0, h: 0 });
     setSelected(null);
@@ -623,13 +628,28 @@ export function AnnotatorView() {
                           draggable={isSelected}
                           // Click on rect → select it (cancel bubble so Stage's
                           // onMouseDown doesn't start a fresh draw).
+                          // Holding Shift bypasses selection so user can draw
+                          // a new (overlapping) box on top of this one.
                           onMouseDown={(e) => {
+                            if (e.evt?.shiftKey) {
+                              // step out of the way: stop the drag that
+                              // draggable={isSelected} may have auto-started.
+                              try { (e.target as any).stopDrag?.(); } catch {}
+                              return;
+                            }
                             e.cancelBubble = true;
                             setSelected(b);
                           }}
                           onTap={(e) => {
                             e.cancelBubble = true;
                             setSelected(b);
+                          }}
+                          // If shift is held when drag starts, abort — Stage's
+                          // onMouseDown wants to start a draw instead.
+                          onDragStart={(e) => {
+                            if (e.evt?.shiftKey) {
+                              (e.target as any).stopDrag?.();
+                            }
                           }}
                           // Drag = move (only when selected via draggable above).
                           onDragEnd={(e) => {
@@ -976,6 +996,7 @@ export function AnnotatorView() {
             <div>Tab — 切換 題目/答案 Pass</div>
             <div>Enter — 此頁確認完，跳下一頁</div>
             <div>Alt + ← / → — 上一頁／下一頁（不改狀態）</div>
+            <div className="text-ink font-medium">Shift + 拖拉 — 在既有框上重疊畫新框</div>
             <div>Delete — 刪除選中框</div>
             <div>Esc — 取消選擇</div>
           </div>
