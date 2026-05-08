@@ -809,7 +809,7 @@ export function AnnotatorView() {
 
         {/* Sidebar */}
         <div className="col-span-3 flex flex-col gap-3 text-[13px]">
-          <SectionTitle>類型 (Q O A S D X U)</SectionTitle>
+          <SectionTitle>類型 (Q O A S D X E)</SectionTitle>
           <div className="grid grid-cols-2 gap-1.5">
             {(Object.keys(BOX_TYPE_INFO) as BoxType[]).map((t) => (
               <button
@@ -1039,7 +1039,7 @@ export function AnnotatorView() {
 
           <div className="text-[11px] text-ink-3 border-t border-rule pt-3 mt-2 space-y-1">
             <div className="font-medium text-ink-2 mb-1">快捷鍵</div>
-            <div>Q/O/A/S/D/X/U — 切類型</div>
+            <div>Q/O/A/S/D/X/E — 切類型</div>
             <div>1/2/3 — 設選中題的難易度（簡單/中等/困難）</div>
             <div>Tab — 切換 題目/答案 Pass</div>
             <div>Enter — 此頁確認完，跳下一頁</div>

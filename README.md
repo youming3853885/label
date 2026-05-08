@@ -80,7 +80,7 @@ PNG source 需透過 `data/upload_annotation_pages.py` 上傳到 Storage bucket
 | S | 切到詳解 |
 | D | 切到圖片 |
 | X | 切到略過 |
-| U | 切到單元概念 |
+| E | 切到單元概念 |
 | 1 / 2 / 3 | 設選中題目的難易度 |
 | Tab | 切換 題目/答案 Pass 模式 |
 | Enter | 確認此頁，跳下一頁 |
