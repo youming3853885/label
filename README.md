@@ -78,7 +78,7 @@ PNG source 需透過 `data/upload_annotation_pages.py` 上傳到 Storage bucket
 | O | 切到選項 |
 | A | 切到答案 |
 | S | 切到詳解 |
-| F | 切到圖片 |
+| D | 切到圖片 |
 | X | 切到略過 |
 | U | 切到單元概念 |
 | 1 / 2 / 3 | 設選中題目的難易度 |

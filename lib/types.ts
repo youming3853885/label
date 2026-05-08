@@ -69,7 +69,7 @@ export const BOX_TYPE_INFO: Record<BoxType, { label: string; key: string; color:
   option:      { label: "選項",   key: "O", color: "#3B82F6" },
   answer:      { label: "答案",   key: "A", color: "#F97316" },
   solution:    { label: "詳解",   key: "S", color: "#A855F7" },
-  figure:      { label: "圖片",   key: "F", color: "#EAB308" },
+  figure:      { label: "圖片",   key: "D", color: "#EAB308" },
   skip:        { label: "略過",   key: "X", color: "#6B7280" },
   unit_title:  { label: "單元概念", key: "E", color: "#EC4899" },
 };
