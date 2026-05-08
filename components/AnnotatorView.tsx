@@ -178,6 +178,33 @@ export function AnnotatorView() {
     return max + 1;
   }, [bookQuestions]);
 
+  // Separate auto-increment for 單元概念 (unit_title) — concept index runs
+  // independently of question-stem index. Drawing a unit_title doesn't
+  // touch currentQInPass either (concepts aren't part of a question chain).
+  const [bookUnitTitleMax, setBookUnitTitleMax] = useState(0);
+  useEffect(() => {
+    if (!book) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase()
+        .from("annotation_boxes")
+        .select("question_number")
+        .eq("book_id", book.id)
+        .eq("type", "unit_title")
+        .not("question_number", "is", null);
+      if (cancelled) return;
+      const max = ((data as any[]) ?? []).reduce(
+        (m, r) => Math.max(m, r.question_number ?? 0),
+        0,
+      );
+      setBookUnitTitleMax(max);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [book, boxes]);
+  const nextUnitTitleNumber = bookUnitTitleMax + 1;
+
   // Fetch every question box for the book — used by the answer-pass dropdown.
   // Includes the source page's page_number for the "Q3 (第 X 頁)" hint.
   useEffect(() => {
@@ -267,6 +294,12 @@ export function AnnotatorView() {
         snum = null; // main stem of a new Q resets sub
         nextCurrentQ = qnum;
         nextCurrentSub = null;
+      } else if (activeType === "unit_title") {
+        // 單元概念 has its own counter (independent of question chain).
+        // Doesn't touch sticky Q — drawing a concept mid-Q5 shouldn't
+        // reset the Q5 chain that subsequent options/answers should pair to.
+        qnum = pendingNumber ?? nextUnitTitleNumber;
+        snum = null;
       } else {
         qnum = currentQInPass;
         snum = currentSubInPass;
@@ -851,6 +884,12 @@ export function AnnotatorView() {
                 下個 <span className="text-ann-question font-semibold">題幹</span> 自動編號{" "}
                 <span className="text-ink font-semibold">Q{nextQuestionNumber}</span>
               </div>
+              {activeType === "unit_title" && (
+                <div>
+                  下個 <span className="text-ann-unit font-semibold">單元概念</span> 自動編號{" "}
+                  <span className="text-ink font-semibold">第 {nextUnitTitleNumber}</span>
+                </div>
+              )}
               {currentQInPass != null && (
                 <div>
                   選項/答案/詳解會綁{" "}
