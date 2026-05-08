@@ -14,6 +14,36 @@ import {
 } from "@/lib/types";
 import { NameModal } from "./NameModal";
 
+// Of all type='question' boxes on this page, return the one whose AABB
+// intersects the given bbox the most (by area). Returns null if none
+// overlap. Used so a freshly-drawn option/answer/solution/figure box
+// auto-inherits the question number of the stem it sits on top of.
+function findUnderlyingQuestion(
+  bbox: { x: number; y: number; w: number; h: number },
+  boxes: Box[],
+): Box | null {
+  let best: Box | null = null;
+  let bestArea = 0;
+  for (const b of boxes) {
+    if (b.type !== "question") continue;
+    if (b.question_number == null) continue;
+    const ix = Math.max(
+      0,
+      Math.min(bbox.x + bbox.w, b.bbox.x + b.bbox.w) - Math.max(bbox.x, b.bbox.x),
+    );
+    const iy = Math.max(
+      0,
+      Math.min(bbox.y + bbox.h, b.bbox.y + b.bbox.h) - Math.max(bbox.y, b.bbox.y),
+    );
+    const area = ix * iy;
+    if (area > bestArea) {
+      bestArea = area;
+      best = b;
+    }
+  }
+  return bestArea > 0 ? best : null;
+}
+
 /**
  * The annotator canvas. Single page at a time. Draw rectangles by
  * click-and-drag, click an existing box to select & edit, hotkeys to set
@@ -305,6 +335,21 @@ export function AnnotatorView() {
         snum = currentSubInPass;
       }
 
+      // Overlap inheritance: if a non-stem, non-concept box (option/answer/
+      // solution/figure/skip) is drawn on top of an existing question stem
+      // on this same page, adopt that stem's question_number + sub_number.
+      // Pick the question with the largest intersection area when several
+      // overlap. This lets the annotator just draw an option box anywhere
+      // inside Q5's region — it auto-pairs to Q5 without manually setting
+      // pendingNumber or relying on sticky-from-last-stem.
+      if (activeType !== "question" && activeType !== "unit_title") {
+        const overlap = findUnderlyingQuestion(bbox, boxes);
+        if (overlap) {
+          qnum = overlap.question_number;
+          snum = overlap.sub_number;
+        }
+      }
+
       const { data, error } = await sb
         .from("annotation_boxes")
         .insert({
@@ -336,7 +381,7 @@ export function AnnotatorView() {
         advancePairingQ(1);
       }
     },
-    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass],
+    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, nextUnitTitleNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass, boxes],
   );
 
   // Patch (update) an existing box — used for difficulty / qnum / option_letter
