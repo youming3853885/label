@@ -77,9 +77,14 @@ export default function HomePage() {
             </div>
           )}
           {books.map((b) => {
+            // Skipped pages (TOC / 版權頁 / blank) count as processed —
+            // they're done in the sense that the annotator has decided
+            // there's nothing useful to label on them.
             const verified = b.pages_verified ?? 0;
+            const skipped = b.pages_skipped ?? 0;
+            const done = verified + skipped;
             const total = b.total_pages || 1;
-            const pct = Math.round((verified / total) * 100);
+            const pct = Math.round((done / total) * 100);
             return (
               <Link
                 key={b.id}
@@ -100,7 +105,12 @@ export default function HomePage() {
                   />
                 </div>
                 <div className="mt-1 text-[11px] text-ink-3">
-                  {verified} / {b.total_pages} 已確認 ({pct}%)
+                  {done} / {b.total_pages} 已處理 ({pct}%)
+                  {skipped > 0 && (
+                    <span className="ml-1 text-ink-4">
+                      — 確認 {verified}、略過 {skipped}
+                    </span>
+                  )}
                 </div>
               </Link>
             );
