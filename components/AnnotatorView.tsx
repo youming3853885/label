@@ -1186,9 +1186,11 @@ function SelectedPanel({
               ))}
             </optgroup>
             <optgroup label="群組（一框多選項）">
+              <option value="ABC">ABC（3 選項）</option>
               <option value="ABCD">ABCD（4 選項）</option>
               <option value="ABCDE">ABCDE（5 選項）</option>
               <option value="ABCDEF">ABCDEF（6 選項）</option>
+              <option value="123">123（3 選項，數字編號）</option>
               <option value="1234">1234（4 選項，數字編號）</option>
               <option value="12345">12345（5 選項）</option>
               <option value="123456">123456（6 選項）</option>
