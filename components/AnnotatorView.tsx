@@ -10,7 +10,7 @@ import { supabase } from "@/lib/supabase";
 const BUCKET = "annotation-source";
 import {
   Box, BoxType, Difficulty, Page, Book,
-  BOX_TYPE_INFO, DIFFICULTY_KEYS, DIFFICULTY_LABEL,
+  BOX_TYPE_INFO, DIFFICULTY_LABEL,
 } from "@/lib/types";
 import { NameModal } from "./NameModal";
 
@@ -475,12 +475,6 @@ export function AnnotatorView() {
       };
       if (e.key.toLowerCase() in map) {
         setActiveType(map[e.key.toLowerCase()]);
-        return;
-      }
-      // 1/2/3 sets difficulty on selected question box
-      if (selected?.type === "question" && DIFFICULTY_KEYS[e.key]) {
-        e.preventDefault();
-        patchBox(selected.id, { difficulty: DIFFICULTY_KEYS[e.key] });
         return;
       }
       // Delete / Backspace to remove selected box
@@ -1040,7 +1034,6 @@ export function AnnotatorView() {
           <div className="text-[11px] text-ink-3 border-t border-rule pt-3 mt-2 space-y-1">
             <div className="font-medium text-ink-2 mb-1">快捷鍵</div>
             <div>Q/O/A/S/D/X/E — 切類型</div>
-            <div>1/2/3 — 設選中題的難易度（簡單/中等/困難）</div>
             <div>Tab — 切換 題目/答案 Pass</div>
             <div>Enter — 此頁確認完，跳下一頁</div>
             <div>Alt + ← / → — 上一頁／下一頁（不改狀態）</div>
@@ -1201,7 +1194,7 @@ function SelectedPanel({
 
       {box.type === "question" && (
         <>
-          <label className="block text-[11px] text-ink-3">難易度 (1/2/3)</label>
+          <label className="block text-[11px] text-ink-3">難易度</label>
           <div className="flex gap-1">
             {(["easy","medium","hard"] as Difficulty[]).map((d) => (
               <button

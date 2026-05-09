@@ -74,11 +74,9 @@ export const BOX_TYPE_INFO: Record<BoxType, { label: string; key: string; color:
   unit_title:  { label: "單元概念", key: "E", color: "#EC4899" },
 };
 
-export const DIFFICULTY_KEYS: Record<string, Difficulty> = {
-  "1": "easy",
-  "2": "medium",
-  "3": "hard",
-};
+// DIFFICULTY_KEYS (1/2/3 hotkey) removed 2026-05-09 — accidental keypresses
+// risked silently writing difficulty into the wrong box. Difficulty is now
+// set only via the explicit button UI in the Selected panel.
 
 export const DIFFICULTY_LABEL: Record<Difficulty, string> = {
   easy: "簡單",

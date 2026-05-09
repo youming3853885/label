@@ -58,7 +58,7 @@ PNG source 需透過 `data/upload_annotation_pages.py` 上傳到 Storage bucket
 4. 每頁：
    - 滑鼠拖拉劃框
    - 按 Q / O / A / S / F / X / U 切框類型
-   - 題目框可按 1/2/3 設難易度
+   - 題目框難易度由右側面板按鈕設定（不再用 1/2/3 熱鍵，避免誤觸）
    - Tab 切換「題目 Pass / 答案 Pass」處理跨頁配對
    - Enter 確認此頁，自動進下一頁
 
@@ -81,7 +81,6 @@ PNG source 需透過 `data/upload_annotation_pages.py` 上傳到 Storage bucket
 | D | 切到圖片 |
 | X | 切到略過 |
 | E | 切到單元概念 |
-| 1 / 2 / 3 | 設選中題目的難易度 |
 | Tab | 切換 題目/答案 Pass 模式 |
 | Enter | 確認此頁，跳下一頁 |
 | Delete | 刪除選中框 |
