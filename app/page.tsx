@@ -3,12 +3,36 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type TabKey = "kg" | "t0";
+type TabKey = "kg" | "t0" | "upad12";
+type Decision = "approved" | "rejected" | "revised";
+type QueueStatus = "all" | "pending" | "approved" | "rejected" | "revised";
+type SourceFilter = "all" | "concept3" | "quick";
+
+type Upad12ReviewRow = {
+  id: string;
+  knowledge_unit_id: string | null;
+  provider: string;
+  source_area: string;
+  external_code: string;
+  external_label: string;
+  external_path: string[] | null;
+  match_method: string;
+  confidence: number | null;
+  evidence: Record<string, unknown> | null;
+  alignment_review_status: string;
+  approved_count: number;
+  rejected_count: number;
+  revised_count: number;
+  review_count: number;
+  last_reviewed_at: string | null;
+  teacher_review_status: "pending" | "approved" | "rejected" | "revised";
+};
 
 const T0_REVIEW_URL =
   process.env.NEXT_PUBLIC_T0_REVIEW_URL ?? "/t0_review.html?bust=20260510clean";
 
 const SHARED_EMAIL = "annotator@label.local";
+const REVIEWER_STORAGE_KEY = "label.upad12.reviewerName";
 
 const tabs = [
   {
@@ -21,43 +45,49 @@ const tabs = [
     key: "t0" as const,
     label: "T0 課綱審查",
     eyebrow: "T0",
-    description: "抽樣審查、同步檢視、匯出 CSV / JSON。",
+    description: "抽樣審查、同步決策、匯出 CSV / JSON。",
+  },
+  {
+    key: "upad12" as const,
+    label: "UPAD12 教師審核",
+    eyebrow: "UPAD12",
+    description: "審查下載回來的外部資料是否可作為 KG 參考證據。",
   },
 ] as const;
 
 const flow = [
   {
     title: "官方課綱",
-    text: "先確定每個年級該學什麼。",
+    text: "先確認教育部課綱寫了什麼，這是知識圖譜的根。",
     color: "bg-[#d6f3f1] border-[#8ecfca]",
   },
   {
-    title: "教材與題庫",
-    text: "接上實際講義、題目與學生作答。",
+    title: "知識點",
+    text: "把課綱轉成老師看得懂的單元、概念與技能。",
     color: "bg-[#ffe6b8] border-[#e7bd6a]",
   },
   {
-    title: "問途知識地圖",
-    text: "整理成孩子看得懂的學習路線。",
+    title: "外部資料",
+    text: "UPAD12、題庫與教材只當參考證據，不直接變成正式知識。",
     color: "bg-paper border-ink shadow-[0_0_0_2px_rgba(26,26,26,0.08)]",
   },
   {
-    title: "老師把關",
-    text: "重要判斷由老師確認。",
+    title: "教師審核",
+    text: "老師確認後，資料才可進入正式流程。",
     color: "bg-[#d9f5df] border-[#95d6a2]",
   },
   {
-    title: "教學應用",
-    text: "回到答疑、補救、週報與試學招生。",
+    title: "應用",
+    text: "用在出題、弱點診斷、教材推薦與補救路徑。",
     color: "bg-[#ffe0dc] border-[#e9a39a]",
   },
 ];
 
 const outcomes = [
-  ["學生", "知道自己卡在哪裡，下一步不再亂猜。"],
-  ["老師", "快速看出全班共同弱點。"],
-  ["家長", "週報能說清楚孩子進步與待補強處。"],
-  ["補習班", "試學診斷變成可理解、可跟進的招生報告。"],
+  ["出題", "知道題目要考哪個知識點，避免亂出或重複出。"],
+  ["診斷", "學生錯題可以回到具體知識點，而不是只看到章節名稱。"],
+  ["補救", "找出缺口後，能推薦前置概念與練習順序。"],
+  ["管理", "讓課綱、教材、題庫與教師審核都有可追溯紀錄。"],
 ];
 
 export default function ReviewPortalPage() {
@@ -98,7 +128,7 @@ export default function ReviewPortalPage() {
           <div className="mb-8">
             <div className="serif text-[24px] font-semibold">label</div>
             <p className="mt-1 text-[12px] leading-5 text-paper/55">
-              課綱審核與講義標註入口
+              講義審核與知識圖譜入口
             </p>
           </div>
 
@@ -129,11 +159,11 @@ export default function ReviewPortalPage() {
               className="block rounded-md border border-paper/10 bg-white/5 px-3 py-3 text-paper/78 transition hover:bg-white/10"
             >
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">
-                Label
+                LABEL
               </div>
               <div className="mt-1 text-[15px] font-semibold">講義標註</div>
               <p className="mt-1 text-[12px] leading-5 opacity-70">
-                點擊後開啟新頁面：label · 講義標註。
+                開啟新分頁進入講義框選與標註。
               </p>
             </a>
           </nav>
@@ -147,10 +177,12 @@ export default function ReviewPortalPage() {
               </p>
               <h1 className="serif text-[28px] font-semibold">{active.label}</h1>
             </div>
-            <div className="text-[13px] text-ink-3">{active.description}</div>
+            <div className="max-w-xl text-[13px] leading-6 text-ink-3">{active.description}</div>
           </header>
 
-          {activeTab === "kg" ? <KnowledgeGraphTab /> : <T0ReviewTab />}
+          {activeTab === "kg" && <KnowledgeGraphTab />}
+          {activeTab === "t0" && <T0ReviewTab />}
+          {activeTab === "upad12" && <Upad12ReviewTab userEmail={user.email} />}
         </section>
       </div>
     </main>
@@ -179,16 +211,16 @@ function LoginCard() {
     });
     setBusy(false);
     if (error) {
-      setMsg("密碼不正確，請重新輸入。");
+      setMsg("密碼不正確，請重新確認。");
     }
   };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-paper px-6">
       <div className="w-full max-w-sm">
-        <div className="serif mb-1 text-[28px] font-semibold">label · 課綱審核入口</div>
+        <div className="serif mb-1 text-[28px] font-semibold">label 審核入口</div>
         <p className="mb-6 text-[13.5px] leading-7 text-ink-3">
-          輸入共用審核密碼後即可使用知識圖譜說明、T0 共編審查與講義標註。
+          請輸入共用審核密碼。登入後可進行 T0 課綱審查、UPAD12 教師審核與講義標註。
         </p>
         <input
           type="password"
@@ -218,13 +250,14 @@ function KnowledgeGraphTab() {
       <div className="rounded-md border border-rule bg-paper p-6 shadow-[0_22px_70px_rgba(28,37,34,.08)]">
         <div className="mx-auto max-w-4xl text-center">
           <span className="inline-flex rounded-full border border-accent/25 bg-accent-soft px-3 py-1 text-[12px] font-semibold text-accent">
-            一張圖講清楚
+            會議用一圖式說明
           </span>
           <h2 className="serif mt-5 text-[42px] font-semibold leading-tight md:text-[56px]">
-            知識圖譜就是孩子的學習導航圖
+            知識圖譜就是把課綱、教材、題庫串成可追溯流程
           </h2>
           <p className="mx-auto mt-4 max-w-3xl text-[16px] leading-8 text-ink-2">
-            把「課綱、教材、題庫、學生作答」整理成一張可追蹤的學習地圖，讓老師、家長與補習班知道：孩子已經會什麼、卡在哪裡、下一步該做什麼。
+            它不是讓 AI 自己發明知識，而是先把官方課綱整理清楚，再把教材與題庫對齊上去，
+            最後由老師審核，讓出題、診斷與補救都有依據。
           </p>
         </div>
 
@@ -250,16 +283,16 @@ function KnowledgeGraphTab() {
 
         <div className="mt-6 grid gap-3 md:grid-cols-4">
           {[
-            "不是技術資料庫，而是 K-12 學習導航圖。",
-            "內容先對齊官方課綱，再接教材與題庫。",
-            "AI 只做整理與建議，老師保留最後確認權。",
-            "最後服務教學、補救、週報與招生。",
-          ].map((point) => (
-            <div key={point} className="rounded-md border border-rule bg-[#fffdf8] p-4">
-              <div className="mb-2 h-2 w-2 rounded-full bg-good" />
-              <p className="text-[14px] font-medium leading-6 text-ink-2">{point}</p>
-            </div>
-          ))}
+            "官方課綱是根，不讓外部資料反客為主。",
+            "UPAD12 只當外部覆蓋度與命題範圍參考。",
+            "老師審核通過後，才可進正式知識圖譜流程。",
+            "每筆資料都能追溯到來源、審核人與決策。"].
+            map((point) => (
+              <div key={point} className="rounded-md border border-rule bg-[#fffdf8] p-4">
+                <div className="mb-2 h-2 w-2 rounded-full bg-good" />
+                <p className="text-[14px] font-medium leading-6 text-ink-2">{point}</p>
+              </div>
+            ))}
         </div>
       </div>
 
@@ -302,7 +335,7 @@ function T0ReviewTab() {
         <div>
           <div className="flex flex-wrap gap-2">
             <span className="rounded-full border border-good/30 bg-good/10 px-2.5 py-1 text-[12px] font-semibold text-good">
-              同源視窗同步
+              同步審核
             </span>
             <span className="rounded-full border border-accent/25 bg-accent-soft px-2.5 py-1 text-[12px] font-semibold text-accent">
               匯出 JSON
@@ -312,7 +345,7 @@ function T0ReviewTab() {
             </span>
           </div>
           <p className="mt-2 text-[12.5px] text-ink-3">
-            內嵌 T0 課綱抽樣審查工作台，審查決策會同步到 Supabase 共享表。
+            T0 是官方課綱資料，正式匯入前必須先有教師人工審核紀錄。
           </p>
         </div>
       </div>
@@ -325,4 +358,414 @@ function T0ReviewTab() {
       />
     </div>
   );
+}
+
+function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
+  const [rows, setRows] = useState<Upad12ReviewRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [source, setSource] = useState<SourceFilter>("all");
+  const [status, setStatus] = useState<QueueStatus>("pending");
+  const [search, setSearch] = useState("");
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [reviewerName, setReviewerName] = useState("");
+
+  useEffect(() => {
+    setReviewerName(localStorage.getItem(REVIEWER_STORAGE_KEY) ?? "");
+  }, []);
+
+  useEffect(() => {
+    if (reviewerName.trim()) {
+      localStorage.setItem(REVIEWER_STORAGE_KEY, reviewerName.trim());
+    }
+  }, [reviewerName]);
+
+  const loadRows = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    let query = supabase()
+      .from("v_upad12_teacher_review_queue")
+      .select("*")
+      .order("confidence", { ascending: false })
+      .limit(3000);
+
+    if (source !== "all") query = query.eq("source_area", source);
+    if (status !== "all") query = query.eq("teacher_review_status", status);
+
+    const { data, error: loadError } = await query;
+    if (loadError) {
+      setError(loadError.message);
+      setRows([]);
+    } else {
+      setRows((data ?? []) as Upad12ReviewRow[]);
+    }
+    setLoading(false);
+  }, [source, status]);
+
+  useEffect(() => {
+    void loadRows();
+  }, [loadRows]);
+
+  useEffect(() => {
+    const channel = supabase()
+      .channel("upad12-review-decisions")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "upad12_teacher_review_decisions" },
+        () => void loadRows(),
+      )
+      .subscribe();
+    return () => {
+      void supabase().removeChannel(channel);
+    };
+  }, [loadRows]);
+
+  const filteredRows = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return rows;
+    return rows.filter((row) => {
+      const haystack = [
+        row.external_label,
+        row.external_code,
+        row.knowledge_unit_id ?? "",
+        row.match_method,
+        row.source_area,
+        ...(row.external_path ?? []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(keyword);
+    });
+  }, [rows, search]);
+
+  const summary = useMemo(() => {
+    return rows.reduce(
+      (acc, row) => {
+        acc.total += 1;
+        acc[row.teacher_review_status] += 1;
+        if (row.source_area === "quick") acc.quick += 1;
+        if (row.source_area === "concept3") acc.concept3 += 1;
+        return acc;
+      },
+      { total: 0, pending: 0, approved: 0, rejected: 0, revised: 0, quick: 0, concept3: 0 },
+    );
+  }, [rows]);
+
+  const decide = async (row: Upad12ReviewRow, decision: Decision) => {
+    setSavingId(row.id);
+    setError(null);
+    const { data } = await supabase().auth.getUser();
+    const user = data.user;
+    if (!user) {
+      setError("登入狀態已失效，請重新登入。");
+      setSavingId(null);
+      return;
+    }
+
+    const { error: saveError } = await supabase()
+      .from("upad12_teacher_review_decisions")
+      .upsert(
+        {
+          alignment_id: row.id,
+          decision,
+          note: notes[row.id]?.trim() || null,
+          reviewer_id: user.id,
+          reviewer_name: reviewerName.trim() || userEmail || "教師",
+          reviewed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "alignment_id,reviewer_id" },
+      );
+
+    if (saveError) {
+      setError(saveError.message);
+    } else {
+      await loadRows();
+    }
+    setSavingId(null);
+  };
+
+  return (
+    <div className="min-h-[calc(100vh-65px)] bg-[#f4f0e7] px-5 py-5">
+      <div className="mx-auto max-w-7xl">
+        <div className="grid gap-3 md:grid-cols-5">
+          <StatCard label="目前清單" value={summary.total} />
+          <StatCard label="待審" value={summary.pending} tone="warn" />
+          <StatCard label="通過" value={summary.approved} tone="good" />
+          <StatCard label="退回" value={summary.rejected} tone="danger" />
+          <StatCard label="需修正" value={summary.revised} tone="accent" />
+        </div>
+
+        <div className="mt-4 rounded-md border border-rule bg-paper p-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_160px_160px_220px_auto] lg:items-end">
+            <label className="block">
+              <span className="text-[12px] font-semibold text-ink-3">搜尋</span>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="知識點、來源碼、路徑、KU ID"
+                className="mt-1 h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[12px] font-semibold text-ink-3">來源</span>
+              <select
+                value={source}
+                onChange={(event) => setSource(event.target.value as SourceFilter)}
+                className="mt-1 h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
+              >
+                <option value="all">全部</option>
+                <option value="quick">快速命題</option>
+                <option value="concept3">知識概念</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-[12px] font-semibold text-ink-3">狀態</span>
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value as QueueStatus)}
+                className="mt-1 h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
+              >
+                <option value="pending">待審</option>
+                <option value="approved">通過</option>
+                <option value="rejected">退回</option>
+                <option value="revised">需修正</option>
+                <option value="all">全部</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-[12px] font-semibold text-ink-3">審核教師</span>
+              <input
+                value={reviewerName}
+                onChange={(event) => setReviewerName(event.target.value)}
+                placeholder="請輸入姓名"
+                className="mt-1 h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
+              />
+            </label>
+            <button
+              onClick={() => void loadRows()}
+              className="h-10 rounded-md border border-ink bg-ink px-4 text-[14px] font-semibold text-paper"
+            >
+              重新整理
+            </button>
+          </div>
+          <p className="mt-3 text-[12.5px] leading-6 text-ink-3">
+            UPAD12 資料只作為外部參考證據。老師在這裡通過，代表「可以作為參考覆蓋度或對齊證據」；
+            不代表它會直接變成正式課綱或知識點。
+          </p>
+        </div>
+
+        {error && (
+          <div className="mt-4 rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
+            {error}
+          </div>
+        )}
+
+        <div className="mt-4 grid gap-3">
+          {loading && <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">載入 UPAD12 審核清單...</div>}
+          {!loading && filteredRows.length === 0 && (
+            <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">目前沒有符合條件的資料。</div>
+          )}
+          {!loading &&
+            filteredRows.map((row) => (
+              <Upad12ReviewCard
+                key={row.id}
+                row={row}
+                note={notes[row.id] ?? ""}
+                saving={savingId === row.id}
+                onNoteChange={(value) => setNotes((prev) => ({ ...prev, [row.id]: value }))}
+                onDecision={(decision) => void decide(row, decision)}
+              />
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  tone = "neutral",
+}: {
+  label: string;
+  value: number;
+  tone?: "neutral" | "good" | "warn" | "danger" | "accent";
+}) {
+  const toneClass =
+    tone === "good"
+      ? "text-good"
+      : tone === "warn"
+        ? "text-warn"
+        : tone === "danger"
+          ? "text-danger"
+          : tone === "accent"
+            ? "text-accent"
+            : "text-ink";
+  return (
+    <div className="rounded-md border border-rule bg-paper p-4">
+      <div className="text-[12px] font-semibold text-ink-3">{label}</div>
+      <div className={`mt-1 text-[30px] font-semibold ${toneClass}`}>{value}</div>
+    </div>
+  );
+}
+
+function Upad12ReviewCard({
+  row,
+  note,
+  saving,
+  onNoteChange,
+  onDecision,
+}: {
+  row: Upad12ReviewRow;
+  note: string;
+  saving: boolean;
+  onNoteChange: (value: string) => void;
+  onDecision: (decision: Decision) => void;
+}) {
+  const evidence = row.evidence ?? {};
+  const path = row.external_path?.filter(Boolean).join(" / ") || "未提供路徑";
+  const confidence = Math.round((row.confidence ?? 0) * 100);
+
+  return (
+    <article className="rounded-md border border-rule bg-paper p-4 shadow-[0_12px_34px_rgba(28,37,34,.06)]">
+      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusPill status={row.teacher_review_status} />
+            <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
+              {sourceLabel(row.source_area)}
+            </span>
+            <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
+              {methodLabel(row.match_method)}
+            </span>
+            <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
+              信心 {confidence}%
+            </span>
+          </div>
+
+          <h2 className="mt-3 text-[28px] font-semibold leading-tight">{row.external_label}</h2>
+          <p className="mt-2 text-[13px] leading-6 text-ink-3">{path}</p>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <InfoBlock label="對齊 KnowledgeUnit" value={row.knowledge_unit_id ?? "未指定"} />
+            <InfoBlock label="UPAD12 來源碼" value={row.external_code} />
+            <InfoBlock label="來源題數" value={toDisplay(evidence.question_count)} />
+            <InfoBlock label="冊別 / 版本" value={[toDisplay(evidence.term), toDisplay(evidence.publisher)].filter(Boolean).join(" / ") || "未提供"} />
+          </div>
+
+          <div className="mt-4 rounded-md border border-rule bg-[#fffdf8] p-3">
+            <div className="text-[12px] font-semibold text-ink-3">系統對齊理由</div>
+            <p className="mt-1 text-[13.5px] leading-7 text-ink-2">
+              {toDisplay(evidence.reason) || "未提供理由。"}
+            </p>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-rule bg-[#fbfaf6] p-3">
+          <div className="text-[12px] font-semibold text-ink-3">人工審核</div>
+          <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+            <MiniCount label="通過" value={row.approved_count} tone="good" />
+            <MiniCount label="退回" value={row.rejected_count} tone="danger" />
+            <MiniCount label="修正" value={row.revised_count} tone="accent" />
+          </div>
+
+          <textarea
+            value={note}
+            onChange={(event) => onNoteChange(event.target.value)}
+            placeholder="教師備註：例如名稱不精準、章節太粗、可作為題數覆蓋參考..."
+            className="mt-3 min-h-28 w-full resize-y rounded-md border border-rule-2 bg-white p-3 text-[13.5px] leading-6"
+          />
+
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <button
+              disabled={saving}
+              onClick={() => onDecision("approved")}
+              className="h-10 rounded-md border border-good bg-good/10 text-[13px] font-semibold text-good disabled:opacity-50"
+            >
+              通過
+            </button>
+            <button
+              disabled={saving}
+              onClick={() => onDecision("revised")}
+              className="h-10 rounded-md border border-accent bg-accent-soft text-[13px] font-semibold text-accent disabled:opacity-50"
+            >
+              修正
+            </button>
+            <button
+              disabled={saving}
+              onClick={() => onDecision("rejected")}
+              className="h-10 rounded-md border border-danger bg-danger/10 text-[13px] font-semibold text-danger disabled:opacity-50"
+            >
+              退回
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function InfoBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-rule bg-white p-3">
+      <div className="text-[12px] font-semibold text-ink-3">{label}</div>
+      <div className="mt-1 break-all text-[13.5px] leading-6 text-ink-2">{value}</div>
+    </div>
+  );
+}
+
+function MiniCount({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "good" | "danger" | "accent";
+}) {
+  const cls = tone === "good" ? "text-good" : tone === "danger" ? "text-danger" : "text-accent";
+  return (
+    <div className="rounded-md border border-rule bg-white px-2 py-2">
+      <div className={`text-[20px] font-semibold ${cls}`}>{value}</div>
+      <div className="text-[11px] text-ink-3">{label}</div>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: Upad12ReviewRow["teacher_review_status"] }) {
+  const config = {
+    pending: ["待審", "border-warn/30 bg-warn/10 text-warn"],
+    approved: ["已通過", "border-good/30 bg-good/10 text-good"],
+    rejected: ["已退回", "border-danger/30 bg-danger/10 text-danger"],
+    revised: ["需修正", "border-accent/25 bg-accent-soft text-accent"],
+  }[status];
+  return (
+    <span className={`rounded-full border px-2.5 py-1 text-[12px] font-semibold ${config[1]}`}>
+      {config[0]}
+    </span>
+  );
+}
+
+function sourceLabel(source: string) {
+  if (source === "quick") return "快速命題";
+  if (source === "concept3") return "知識概念";
+  return source;
+}
+
+function methodLabel(method: string) {
+  if (method === "coverage") return "題數覆蓋";
+  if (method === "exact") return "名稱相同";
+  if (method === "alias") return "別名相符";
+  if (method === "embedding") return "語意相近";
+  if (method === "manual") return "人工指定";
+  return method;
+}
+
+function toDisplay(value: unknown) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
 }
