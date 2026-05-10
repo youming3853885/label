@@ -312,17 +312,9 @@ function T0ReviewTab() {
             </span>
           </div>
           <p className="mt-2 text-[12.5px] text-ink-3">
-            內嵌 T0 課綱抽樣審查工作台。跨裝置多人共編若要正式使用，下一步需接 Supabase 共享審核表。
+            內嵌 T0 課綱抽樣審查工作台，審查決策會同步到 Supabase 共享表。
           </p>
         </div>
-        <a
-          href={T0_REVIEW_URL}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-10 items-center justify-center rounded-md bg-ink px-4 text-[13px] font-semibold text-paper"
-        >
-          新頁開啟工作台
-        </a>
       </div>
       <iframe
         ref={frameRef}
