@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "標籤工具 — 名師講義 PDF 標註",
-  description: "為 AI 教育平台標註名師講義頁面",
+  title: "label · 課綱審核與講義標註",
+  description: "知識圖譜說明、T0 課綱抽樣審查、講義標註整合入口。",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

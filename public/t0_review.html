@@ -1,0 +1,862 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>T0 review desk</title>
+  <link rel="icon" href="data:,">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --paper: #f3f0e7;
+      --ink: #1d2522;
+      --muted: #68746f;
+      --line: #cfd8d1;
+      --panel: #fffdf7;
+      --panel-2: #e9eee8;
+      --green: #236b4b;
+      --red: #9d3434;
+      --blue: #285f78;
+      --amber: #8a6517;
+      --violet: #5b4d82;
+      --shadow: 0 18px 50px rgba(28, 37, 34, .13);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(40, 95, 120, .06) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(40, 95, 120, .06) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+      letter-spacing: 0;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: end;
+      padding: 22px 28px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(243, 240, 231, .94);
+      backdrop-filter: blur(12px);
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-family: Georgia, "Times New Roman", "Microsoft JhengHei", serif;
+      font-size: clamp(28px, 3vw, 44px);
+      line-height: 1.05;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      line-height: 1.55;
+      max-width: 980px;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      gap: 18px;
+      padding: 18px 24px 28px;
+    }
+
+    aside, .review {
+      background: rgba(255, 253, 247, .94);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    aside {
+      position: sticky;
+      top: 110px;
+      align-self: start;
+      max-height: calc(100vh - 128px);
+      overflow: auto;
+      padding: 15px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 10px;
+      background: var(--panel-2);
+    }
+
+    .metric strong {
+      display: block;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    label {
+      display: grid;
+      gap: 5px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    select, input, textarea, button {
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel);
+      color: var(--ink);
+    }
+
+    select, input {
+      min-height: 38px;
+      padding: 7px 10px;
+      width: 100%;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 108px;
+      padding: 10px;
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    button {
+      min-height: 38px;
+      padding: 8px 13px;
+      cursor: pointer;
+      transition: transform .14s ease, box-shadow .14s ease, background .14s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(28, 37, 34, .12);
+    }
+
+    .toolbar, .decision-buttons, .pager, .edit-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .review { overflow: hidden; }
+
+    .item-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      padding: 22px 24px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .kicker {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #f4f1e6;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .source-gap { color: #fff; background: var(--red); border-color: var(--red); }
+    .sample { color: #fff; background: var(--blue); border-color: var(--blue); }
+    .anomaly { color: #fff; background: var(--amber); border-color: var(--amber); }
+    .approved { color: #fff; background: var(--green); border-color: var(--green); }
+    .rejected { color: #fff; background: var(--red); border-color: var(--red); }
+    .revised { color: #fff; background: var(--violet); border-color: var(--violet); }
+
+    .code {
+      margin: 0;
+      font-size: clamp(32px, 6vw, 70px);
+      line-height: 1;
+      font-family: Georgia, "Times New Roman", serif;
+      word-break: break-word;
+    }
+
+    .position {
+      min-width: 120px;
+      text-align: right;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 42px;
+      font-weight: 700;
+      color: var(--blue);
+    }
+
+    .body-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 18px;
+      padding: 18px 24px 24px;
+    }
+
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fffefb;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+
+    .section h2 {
+      margin: 0 0 10px;
+      font-size: 15px;
+    }
+
+    .description {
+      font-size: 20px;
+      line-height: 1.8;
+    }
+
+    .excerpt {
+      white-space: pre-wrap;
+      line-height: 1.75;
+      color: #36433e;
+      background: #f6f4eb;
+      border-left: 4px solid var(--blue);
+      padding: 12px;
+      border-radius: 4px;
+    }
+
+    .meta {
+      display: grid;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      word-break: break-word;
+    }
+
+    .edit-box {
+      border: 1px solid var(--violet);
+      background: #fbf9ff;
+    }
+
+    .decision-buttons button[data-action="approve"] { border-color: var(--green); }
+    .decision-buttons button[data-action="edit"] { border-color: var(--violet); }
+    .decision-buttons button[data-action="reject"] { border-color: var(--red); }
+    .edit-actions button[data-action="save-edit"] { background: var(--violet); color: #fff; border-color: var(--violet); }
+    .decision-pager {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .empty {
+      padding: 38px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    @media (max-width: 920px) {
+      header, main, .body-grid, .item-head {
+        grid-template-columns: 1fr;
+      }
+
+      aside { position: static; max-height: none; }
+      .position { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>&#x0054;&#x0030; &#x8AB2;&#x7DB1;&#x62BD;&#x6A23;&#x5BE9;&#x67E5;&#x5DE5;&#x4F5C;&#x53F0;</h1>
+      <div class="subtitle">&#x570B;&#x5C0F;&#x8207;&#x9AD8;&#x4E2D;&#x5168;&#x79D1; T0 &#x76EE;&#x524D;&#x662F;&#x6A5F;&#x5668;&#x9A57;&#x8B49;&#x7684;&#x5B98;&#x65B9;&#x8AB2;&#x7DB1;&#x62BD;&#x53D6;&#x8CC7;&#x6599;&#xFF0C;&#x4E0D;&#x7B49;&#x65BC;&#x6559;&#x5E2B;&#x5BE9;&#x6838;&#x5B8C;&#x6210;&#x3002;</div>
+    </div>
+    <div class="toolbar">
+      <button id="exportJsonBtn" type="button">&#x532F;&#x51FA; JSON</button>
+      <button id="exportCsvBtn" type="button">&#x532F;&#x51FA; CSV</button>
+      <button id="resetBtn" type="button">&#x6E05;&#x9664;&#x672C;&#x6A5F;&#x6C7A;&#x7B56;</button>
+    </div>
+  </header>
+
+  <main>
+    <aside>
+      <div class="metric-grid">
+        <div class="metric"><strong id="totalCount">0</strong><span>&#x62BD;&#x6A23;&#x9805;&#x76EE;</span></div>
+        <div class="metric"><strong id="doneCount">0</strong><span>&#x5DF2;&#x5BE9;&#x67E5;</span></div>
+        <div class="metric"><strong id="gapCount">0</strong><span>&#x4F86;&#x6E90;&#x7F3A;&#x53E3;</span></div>
+        <div class="metric"><strong id="visibleCount">0</strong><span>&#x76EE;&#x524D;&#x7BE9;&#x9078;</span></div>
+      </div>
+
+      <label>&#x5B78;&#x6BB5;
+        <select id="levelFilter"><option value="">&#x5168;&#x90E8;</option></select>
+      </label>
+      <label>&#x79D1;&#x76EE;
+        <select id="subjectFilter"><option value="">&#x5168;&#x90E8;</option></select>
+      </label>
+      <label>&#x62BD;&#x6A23;&#x539F;&#x56E0;
+        <select id="reasonFilter"><option value="">&#x5168;&#x90E8;</option></select>
+      </label>
+      <label>&#x5BE9;&#x67E5;&#x72C0;&#x614B;
+        <select id="statusFilter">
+          <option value="">&#x5168;&#x90E8;</option>
+          <option value="pending">&#x672A;&#x5BE9;</option>
+          <option value="approved">&#x901A;&#x904E;</option>
+          <option value="revised">&#x5DF2;&#x4FEE;&#x6539;</option>
+          <option value="rejected">&#x9000;&#x56DE;</option>
+        </select>
+      </label>
+      <label>&#x641C;&#x5C0B;
+        <input id="searchInput" type="search" placeholder="code / subject / text">
+      </label>
+    </aside>
+
+    <section class="review" id="reviewPanel">
+      <div class="empty">Loading...</div>
+    </section>
+  </main>
+
+  <script>
+    const TEXT = {
+      pending: '\u672a\u5be9',
+      approved: '\u901a\u904e',
+      revised: '\u5df2\u4fee\u6539',
+      rejected: '\u9000\u56de',
+      approve: '\u901a\u904e',
+      edit: '\u7de8\u8f2f',
+      reject: '\u9000\u56de',
+      clear: '\u53d6\u6d88\u6c7a\u7b56',
+      saveEdit: '\u5132\u5b58\u4fee\u6539',
+      cancelEdit: '\u653e\u68c4\u7de8\u8f2f',
+      note: '\u7406\u7531',
+      desc: '\u8ab2\u7db1\u63cf\u8ff0',
+      excerpt: '\u4f86\u6e90 excerpt',
+      page: '\u9801\u78bc',
+      editTitle: '\u76f4\u63a5\u4fee\u6539\u6b64\u7b46 T0',
+      noDesc: '\u7121\u63cf\u8ff0',
+      noExcerpt: '\u6b64\u9805\u76ee\u6c92\u6709 excerpt\uff0c\u9700\u88dc\u4f86\u6e90\u8cc7\u6599\u3002',
+      empty: '\u6c92\u6709\u7b26\u5408\u689d\u4ef6\u7684\u5be9\u67e5\u9805\u76ee'
+    };
+
+    const SUPABASE_URL = 'https://iwbwhwivmcjnmmalcssd.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3Yndod2l2bWNqbm1tYWxjc3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTA3NTEsImV4cCI6MjA5MjYyNjc1MX0.IZFJsl_cA6pCNSmudaBHBYhBkyHGo_j0gI4D-UK5yIg';
+    const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const CLIENT_ID_KEY = 't0ReviewClientId';
+
+    function clientId() {
+      let id = localStorage.getItem(CLIENT_ID_KEY);
+      if (!id) {
+        id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        localStorage.setItem(CLIENT_ID_KEY, id);
+      }
+      return id;
+    }
+
+    const state = {
+      items: [],
+      filtered: [],
+      index: 0,
+      editMode: false,
+      decisions: JSON.parse(localStorage.getItem('t0ReviewDecisions') || '{}'),
+      clientId: clientId(),
+      sharedReady: false,
+      sharedChannel: null
+    };
+
+    const els = {
+      totalCount: document.getElementById('totalCount'),
+      doneCount: document.getElementById('doneCount'),
+      gapCount: document.getElementById('gapCount'),
+      visibleCount: document.getElementById('visibleCount'),
+      levelFilter: document.getElementById('levelFilter'),
+      subjectFilter: document.getElementById('subjectFilter'),
+      reasonFilter: document.getElementById('reasonFilter'),
+      statusFilter: document.getElementById('statusFilter'),
+      searchInput: document.getElementById('searchInput'),
+      reviewPanel: document.getElementById('reviewPanel'),
+      exportJsonBtn: document.getElementById('exportJsonBtn'),
+      exportCsvBtn: document.getElementById('exportCsvBtn'),
+      resetBtn: document.getElementById('resetBtn')
+    };
+
+    const syncChannel = 'BroadcastChannel' in window
+      ? new BroadcastChannel('t0-review-decisions')
+      : null;
+
+    function persistDecisions(reviewId = null) {
+      localStorage.setItem('t0ReviewDecisions', JSON.stringify(state.decisions));
+      syncChannel?.postMessage({
+        type: 'decisions-updated',
+        decisions: state.decisions,
+        source: window.name || location.href,
+        at: new Date().toISOString()
+      });
+      if (reviewId) {
+        syncDecision(reviewId).catch((error) => {
+          console.error('Supabase sync failed', error);
+          alert(`Supabase \u5171\u4eab\u8868\u540c\u6b65\u5931\u6557\uff1a${error.message}`);
+        });
+      }
+    }
+
+    async function requireSession() {
+      if (!supabaseClient) throw new Error('\u7121\u6cd5\u8f09\u5165 Supabase client');
+      const { data, error } = await supabaseClient.auth.getSession();
+      if (error) throw error;
+      if (!data.session) {
+        throw new Error('\u8acb\u5148\u56de\u5230 label \u9996\u9801\u767b\u5165\u5171\u7528\u5be9\u6838\u5e33\u865f\uff0c\u624d\u80fd\u8b80\u5beb Supabase \u5171\u4eab\u6c7a\u7b56\u8868\u3002');
+      }
+      return data.session;
+    }
+
+    function reviewerName() {
+      return localStorage.getItem('label.annotator_name') || '';
+    }
+
+    function rowToDecision(row) {
+      return {
+        status: row.status || 'pending',
+        note: row.note || '',
+        edited_item: row.edited_item || null,
+        reviewed_at: row.reviewed_at || row.updated_at || null,
+        reviewer_name: row.reviewer_name || ''
+      };
+    }
+
+    async function loadSharedDecisions() {
+      await requireSession();
+      const { data, error } = await supabaseClient
+        .from('t0_review_decisions')
+        .select('*');
+      if (error) throw error;
+      const shared = {};
+      (data || []).forEach((row) => {
+        shared[row.review_id] = rowToDecision(row);
+      });
+      state.decisions = { ...state.decisions, ...shared };
+      state.sharedReady = true;
+      localStorage.setItem('t0ReviewDecisions', JSON.stringify(state.decisions));
+    }
+
+    async function syncDecision(reviewId) {
+      if (!state.sharedReady) return;
+      await requireSession();
+      const item = state.items.find((entry) => entry.review_id === reviewId);
+      if (!item) return;
+      const decision = decisionFor(item);
+      const view = decision.edited_item || item;
+      const reviewedAt = decision.reviewed_at || new Date().toISOString();
+      const sourcePage = Number.parseInt(view.source_page, 10);
+      const { error } = await supabaseClient
+        .from('t0_review_decisions')
+        .upsert({
+          review_id: reviewId,
+          t0_id: item.t0_id || null,
+          status: decision.status || 'pending',
+          note: decision.note || '',
+          edited_item: decision.edited_item || null,
+          payload: {
+            level: view.level,
+            subject: view.subject,
+            code: view.code,
+            indicator_type: view.indicator_type,
+            sampling_reason: item.sampling_reason
+          },
+          reviewer_name: reviewerName(),
+          source_page: Number.isFinite(sourcePage) ? sourcePage : null,
+          client_id: state.clientId,
+          reviewed_at: reviewedAt,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'review_id' });
+      if (error) throw error;
+    }
+
+    function subscribeSharedDecisions() {
+      if (!supabaseClient || state.sharedChannel) return;
+      state.sharedChannel = supabaseClient
+        .channel('t0-review-decisions')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 't0_review_decisions' }, (payload) => {
+          const row = payload.new || payload.old;
+          if (!row?.review_id || row.client_id === state.clientId) return;
+          if (payload.eventType === 'DELETE') {
+            delete state.decisions[row.review_id];
+          } else {
+            state.decisions[row.review_id] = rowToDecision(row);
+          }
+          localStorage.setItem('t0ReviewDecisions', JSON.stringify(state.decisions));
+          applyFilters({ targetReviewId: state.filtered[state.index]?.review_id });
+        })
+        .subscribe();
+    }
+
+    function decisionFor(item) {
+      return state.decisions[item.review_id] || {
+        status: item.review_status || 'pending',
+        note: '',
+        edited_item: null
+      };
+    }
+
+    function currentItemView(item) {
+      const decision = decisionFor(item);
+      return decision.edited_item || item;
+    }
+
+    function setDecision(item, payload, options = {}) {
+      const nextItem = options.advance ? state.filtered[state.index + 1] : null;
+      const fallbackIndex = options.advance && nextItem ? state.index + 1 : state.index;
+      state.decisions[item.review_id] = {
+        ...decisionFor(item),
+        ...payload,
+        reviewed_at: new Date().toISOString()
+      };
+      persistDecisions(item.review_id);
+      state.editMode = false;
+      if (options.advance) {
+        applyFilters({
+          targetReviewId: nextItem?.review_id,
+          fallbackIndex
+        });
+      } else {
+        updateMetrics();
+        render();
+      }
+    }
+
+    function optionize(select, values) {
+      values.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+    }
+
+    function hydrateFilters() {
+      optionize(els.levelFilter, [...new Set(state.items.map(item => item.level))]);
+      optionize(els.subjectFilter, [...new Set(state.items.map(item => item.subject))]);
+      optionize(els.reasonFilter, [...new Set(state.items.map(item => item.sampling_reason))]);
+    }
+
+    function applyFilters(options = {}) {
+      const level = els.levelFilter.value;
+      const subject = els.subjectFilter.value;
+      const reason = els.reasonFilter.value;
+      const status = els.statusFilter.value;
+      const query = els.searchInput.value.trim().toLowerCase();
+      state.filtered = state.items.filter(item => {
+        const decision = decisionFor(item);
+        const view = currentItemView(item);
+        const haystack = `${view.code} ${view.subject} ${view.level} ${view.description} ${view.source_excerpt}`.toLowerCase();
+        return (!level || item.level === level)
+          && (!subject || item.subject === subject)
+          && (!reason || item.sampling_reason === reason)
+          && (!status || decision.status === status)
+          && (!query || haystack.includes(query));
+      });
+      if (options.targetReviewId) {
+        const targetIndex = state.filtered.findIndex(item => item.review_id === options.targetReviewId);
+        state.index = targetIndex >= 0
+          ? targetIndex
+          : Math.min(options.fallbackIndex ?? state.index, Math.max(0, state.filtered.length - 1));
+      } else {
+        state.index = Math.min(options.fallbackIndex ?? state.index, Math.max(0, state.filtered.length - 1));
+      }
+      state.editMode = false;
+      updateMetrics();
+      render();
+    }
+
+    function updateMetrics() {
+      const done = state.items.filter(item => decisionFor(item).status !== 'pending').length;
+      const gaps = state.items.filter(item => item.sampling_reason === 'source_gap').length;
+      els.totalCount.textContent = state.items.length;
+      els.doneCount.textContent = done;
+      els.gapCount.textContent = gaps;
+      els.visibleCount.textContent = state.filtered.length;
+    }
+
+    function badgeClass(reason, status) {
+      if (status !== 'pending') return status;
+      if (reason === 'source_gap') return 'source-gap';
+      if (reason.startsWith('anomaly:')) return 'anomaly';
+      return 'sample';
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+    }
+
+    function renderDisplay(item, view, decision) {
+      return `
+        <div class="section">
+          <h2>${TEXT.desc}</h2>
+          <div class="description">${escapeHtml(view.description || TEXT.noDesc)}</div>
+        </div>
+        <div class="section">
+          <h2>${TEXT.excerpt}</h2>
+          <div class="excerpt">${escapeHtml(view.source_excerpt || TEXT.noExcerpt)}</div>
+        </div>
+      `;
+    }
+
+    function renderEditor(view, decision) {
+      return `
+        <div class="section edit-box">
+          <h2>${TEXT.editTitle}</h2>
+          <label>${TEXT.desc}
+            <textarea id="editDescription">${escapeHtml(view.description || '')}</textarea>
+          </label>
+          <label>${TEXT.excerpt}
+            <textarea id="editExcerpt">${escapeHtml(view.source_excerpt || '')}</textarea>
+          </label>
+          <label>${TEXT.page}
+            <input id="editPage" value="${escapeHtml(view.source_page || '')}">
+          </label>
+          <label>${TEXT.note}
+            <textarea id="editNote">${escapeHtml(decision.note || '')}</textarea>
+          </label>
+          <div class="edit-actions" style="margin-top:10px">
+            <button type="button" data-action="save-edit">${TEXT.saveEdit}</button>
+            <button type="button" data-action="cancel-edit">${TEXT.cancelEdit}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function render() {
+      if (!state.filtered.length) {
+        els.reviewPanel.innerHTML = `<div class="empty">${TEXT.empty}</div>`;
+        return;
+      }
+
+      const item = state.filtered[state.index];
+      const view = currentItemView(item);
+      const decision = decisionFor(item);
+      const className = badgeClass(item.sampling_reason, decision.status);
+
+      els.reviewPanel.innerHTML = `
+        <div class="item-head">
+          <div>
+            <div class="kicker">
+              <span class="pill">${escapeHtml(view.level)}</span>
+              <span class="pill">${escapeHtml(view.subject)}</span>
+              <span class="pill ${className}">${escapeHtml(item.sampling_reason)}</span>
+              <span class="pill ${decision.status === 'pending' ? '' : decision.status}">${TEXT[decision.status] || decision.status}</span>
+            </div>
+            <h2 class="code">${escapeHtml(view.code)}</h2>
+          </div>
+          <div class="position">${state.index + 1}/${state.filtered.length}</div>
+        </div>
+        <div class="body-grid">
+          <div>
+            ${state.editMode ? renderEditor(view, decision) : renderDisplay(item, view, decision)}
+          </div>
+          <div>
+            <div class="section meta">
+              <div>\u985e\u578b: ${escapeHtml(view.indicator_type || '')}</div>
+              <div>\u9818\u57df: ${escapeHtml(view.domain || '')}</div>
+              <div>\u9801\u78bc: ${escapeHtml(String(view.source_page || ''))}</div>
+              <div>SHA-256: ${escapeHtml(view.source_pdf_sha256 || '')}</div>
+              <div>T0 ID: ${escapeHtml(view.t0_id || '')}</div>
+            </div>
+            <div class="section">
+              <h2>${TEXT.note}</h2>
+              <textarea id="noteInput" placeholder="${TEXT.note}">${escapeHtml(decision.note || '')}</textarea>
+              <div class="decision-buttons" style="margin-top:10px">
+                <button type="button" data-action="approve">${TEXT.approve}</button>
+                <button type="button" data-action="edit">${TEXT.edit}</button>
+                <button type="button" data-action="reject">${TEXT.reject}</button>
+                <button type="button" data-action="clear">${TEXT.clear}</button>
+              </div>
+              <div class="pager decision-pager">
+                <button type="button" id="prevBtn">\u4e0a\u4e00\u7b46</button>
+                <button type="button" id="nextBtn">\u4e0b\u4e00\u7b46</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const prev = document.getElementById('prevBtn');
+      const next = document.getElementById('nextBtn');
+      if (prev) prev.onclick = () => { state.index = Math.max(0, state.index - 1); state.editMode = false; render(); };
+      if (next) next.onclick = () => { state.index = Math.min(state.filtered.length - 1, state.index + 1); state.editMode = false; render(); };
+
+      document.querySelector('[data-action="approve"]').onclick = () => {
+        setDecision(item, { status: 'approved', note: document.getElementById('noteInput').value }, { advance: true });
+      };
+      document.querySelector('[data-action="edit"]').onclick = () => {
+        state.editMode = true;
+        render();
+        document.getElementById('editDescription')?.focus();
+      };
+      document.querySelector('[data-action="reject"]').onclick = () => {
+        setDecision(item, { status: 'rejected', note: document.getElementById('noteInput').value });
+      };
+      document.querySelector('[data-action="clear"]').onclick = () => {
+        setDecision(item, { status: 'pending', note: '', edited_item: null });
+      };
+
+      const saveEdit = document.querySelector('[data-action="save-edit"]');
+      const cancelEdit = document.querySelector('[data-action="cancel-edit"]');
+      if (saveEdit) {
+        saveEdit.onclick = () => {
+          const edited = {
+            ...view,
+            description: document.getElementById('editDescription').value,
+            source_excerpt: document.getElementById('editExcerpt').value,
+            source_page: document.getElementById('editPage').value
+          };
+          setDecision(item, {
+            status: 'revised',
+            note: document.getElementById('editNote').value,
+            edited_item: edited
+          });
+        };
+      }
+      if (cancelEdit) {
+        cancelEdit.onclick = () => {
+          state.editMode = false;
+          render();
+        };
+      }
+    }
+
+    function exportJson() {
+      const blob = new Blob([JSON.stringify(state.decisions, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `t0-review-decisions-${new Date().toISOString().slice(0, 10)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function csvEscape(value) {
+      const text = value == null ? '' : String(value);
+      return `"${text.replaceAll('"', '""')}"`;
+    }
+
+    function exportCsv() {
+      const headers = [
+        'review_id',
+        't0_id',
+        'level',
+        'subject',
+        'code',
+        'indicator_type',
+        'source_page',
+        'status',
+        'note',
+        'reviewed_at'
+      ];
+      const rows = state.items.map((item) => {
+        const decision = decisionFor(item);
+        const view = currentItemView(item);
+        return [
+          item.review_id,
+          item.t0_id,
+          view.level,
+          view.subject,
+          view.code,
+          view.indicator_type,
+          view.source_page,
+          decision.status,
+          decision.note,
+          decision.reviewed_at
+        ].map(csvEscape).join(',');
+      });
+      const csv = [headers.join(','), ...rows].join('\n');
+      const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `t0-review-decisions-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function init() {
+      const response = await fetch('t0_review_items.json');
+      const payload = await response.json();
+      state.items = payload.items || [];
+      await loadSharedDecisions();
+      state.filtered = [...state.items];
+      hydrateFilters();
+      updateMetrics();
+      render();
+      subscribeSharedDecisions();
+      setInterval(() => {
+        loadSharedDecisions()
+          .then(() => applyFilters({ targetReviewId: state.filtered[state.index]?.review_id }))
+          .catch((error) => console.warn('Shared decision refresh failed', error));
+      }, 15000);
+    }
+
+    [els.levelFilter, els.subjectFilter, els.reasonFilter, els.statusFilter, els.searchInput].forEach(el => {
+      el.addEventListener('input', applyFilters);
+    });
+    els.exportJsonBtn.onclick = exportJson;
+    els.exportCsvBtn.onclick = exportCsv;
+    els.resetBtn.onclick = () => {
+      if (confirm('\u78ba\u5b9a\u6e05\u9664\u672c\u6a5f\u5be9\u67e5\u6c7a\u7b56\uff1f')) {
+        state.decisions = {};
+        localStorage.removeItem('t0ReviewDecisions');
+        syncChannel?.postMessage({
+          type: 'decisions-updated',
+          decisions: state.decisions,
+          source: window.name || location.href,
+          at: new Date().toISOString()
+        });
+        applyFilters();
+      }
+    };
+
+    syncChannel?.addEventListener('message', (event) => {
+      if (event.data?.type !== 'decisions-updated') return;
+      state.decisions = event.data.decisions || {};
+      localStorage.setItem('t0ReviewDecisions', JSON.stringify(state.decisions));
+      applyFilters();
+    });
+
+    window.addEventListener('storage', (event) => {
+      if (event.key !== 't0ReviewDecisions') return;
+      state.decisions = JSON.parse(event.newValue || '{}');
+      applyFilters();
+    });
+
+    init().catch(error => {
+      els.reviewPanel.innerHTML = `<div class="empty">Load failed: ${escapeHtml(error.message)}</div>`;
+    });
+  </script>
+</body>
+</html>
