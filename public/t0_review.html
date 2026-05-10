@@ -365,6 +365,30 @@
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3Yndod2l2bWNqbm1tYWxjc3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwNTA3NTEsImV4cCI6MjA5MjYyNjc1MX0.IZFJsl_cA6pCNSmudaBHBYhBkyHGo_j0gI4D-UK5yIg';
     const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const CLIENT_ID_KEY = 't0ReviewClientId';
+    let resolveFrameSession;
+    let frameSessionReceived = false;
+    const frameSessionReady = new Promise((resolve) => {
+      resolveFrameSession = resolve;
+    });
+
+    window.addEventListener('message', async (event) => {
+      if (event.origin !== location.origin) return;
+      if (event.data?.type !== 'label-supabase-session') return;
+      const session = event.data.session;
+      if (!session?.access_token || !session?.refresh_token || !supabaseClient) {
+        resolveFrameSession?.();
+        return;
+      }
+      const { error } = await supabaseClient.auth.setSession({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token
+      });
+      if (error) {
+        console.warn('Supabase frame session failed', error);
+      }
+      frameSessionReceived = true;
+      resolveFrameSession?.();
+    });
 
     function clientId() {
       let id = localStorage.getItem(CLIENT_ID_KEY);
@@ -424,8 +448,16 @@
 
     async function requireSession() {
       if (!supabaseClient) throw new Error('\u7121\u6cd5\u8f09\u5165 Supabase client');
-      const { data, error } = await supabaseClient.auth.getSession();
+      let { data, error } = await supabaseClient.auth.getSession();
       if (error) throw error;
+      if (!data.session && !frameSessionReceived) {
+        await Promise.race([
+          frameSessionReady,
+          new Promise((resolve) => setTimeout(resolve, 2500))
+        ]);
+        ({ data, error } = await supabaseClient.auth.getSession());
+        if (error) throw error;
+      }
       if (!data.session) {
         throw new Error('\u8acb\u5148\u56de\u5230 label \u9996\u9801\u767b\u5165\u5171\u7528\u5be9\u6838\u5e33\u865f\uff0c\u624d\u80fd\u8b80\u5beb Supabase \u5171\u4eab\u6c7a\u7b56\u8868\u3002');
       }

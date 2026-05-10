@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type TabKey = "kg" | "t0";
@@ -276,6 +276,26 @@ function KnowledgeGraphTab() {
 }
 
 function T0ReviewTab() {
+  const frameRef = useRef<HTMLIFrameElement | null>(null);
+
+  const sendSessionToFrame = useCallback(async () => {
+    const frame = frameRef.current?.contentWindow;
+    if (!frame) return;
+    const { data } = await supabase().auth.getSession();
+    frame.postMessage(
+      { type: "label-supabase-session", session: data.session },
+      window.location.origin,
+    );
+  }, []);
+
+  useEffect(() => {
+    sendSessionToFrame();
+    const { data } = supabase().auth.onAuthStateChange(() => {
+      void sendSessionToFrame();
+    });
+    return () => data.subscription.unsubscribe();
+  }, [sendSessionToFrame]);
+
   return (
     <div className="flex h-[calc(100vh-65px)] flex-col">
       <div className="flex flex-col gap-3 border-b border-rule bg-[#fffdf8] px-5 py-3 md:flex-row md:items-center md:justify-between">
@@ -305,8 +325,10 @@ function T0ReviewTab() {
         </a>
       </div>
       <iframe
+        ref={frameRef}
         title="T0 課綱抽樣審查工作台"
         src={T0_REVIEW_URL}
+        onLoad={sendSessionToFrame}
         className="h-full w-full flex-1 border-0"
       />
     </div>
