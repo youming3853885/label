@@ -7,6 +7,7 @@ type TabKey = "kg" | "t0" | "upad12";
 type Decision = "approved" | "rejected" | "revised";
 type QueueStatus = "all" | "pending" | "approved" | "rejected" | "revised";
 type SourceFilter = "all" | "concept3" | "quick";
+type SubjectFilter = "all" | "math" | "chinese" | "english" | "science" | "social" | "uncategorized";
 
 type Upad12ReviewRow = {
   id: string;
@@ -366,6 +367,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<SourceFilter>("all");
+  const [subject, setSubject] = useState<SubjectFilter>("all");
   const [status, setStatus] = useState<QueueStatus>("pending");
   const [search, setSearch] = useState("");
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -423,21 +425,25 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
 
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
-    if (!keyword) return rows;
     return rows.filter((row) => {
+      if (subject !== "all" && inferSubject(row) !== subject) {
+        return false;
+      }
+      if (!keyword) return true;
       const haystack = [
         row.external_label,
         row.external_code,
         row.knowledge_unit_id ?? "",
         row.match_method,
         row.source_area,
+        subjectLabel(inferSubject(row)),
         ...(row.external_path ?? []),
       ]
         .join(" ")
         .toLowerCase();
       return haystack.includes(keyword);
     });
-  }, [rows, search]);
+  }, [rows, search, subject]);
 
   const summary = useMemo(() => {
     return rows.reduce(
@@ -446,9 +452,27 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         acc[row.teacher_review_status] += 1;
         if (row.source_area === "quick") acc.quick += 1;
         if (row.source_area === "concept3") acc.concept3 += 1;
+        acc.subjects[inferSubject(row)] += 1;
         return acc;
       },
-      { total: 0, pending: 0, approved: 0, rejected: 0, revised: 0, quick: 0, concept3: 0 },
+      {
+        total: 0,
+        pending: 0,
+        approved: 0,
+        rejected: 0,
+        revised: 0,
+        quick: 0,
+        concept3: 0,
+        subjects: {
+          all: 0,
+          math: 0,
+          chinese: 0,
+          english: 0,
+          science: 0,
+          social: 0,
+          uncategorized: 0,
+        } as Record<SubjectFilter, number>,
+      },
     );
   }, [rows]);
 
@@ -498,7 +522,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         </div>
 
         <div className="mt-4 rounded-md border border-rule bg-paper p-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_160px_160px_220px_auto] lg:items-end">
+          <div className="grid gap-3 lg:grid-cols-[1fr_150px_150px_150px_220px_auto] lg:items-end">
             <label className="block">
               <span className="text-[12px] font-semibold text-ink-3">搜尋</span>
               <input
@@ -518,6 +542,22 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
                 <option value="all">全部</option>
                 <option value="quick">快速命題</option>
                 <option value="concept3">知識概念</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-[12px] font-semibold text-ink-3">科目</span>
+              <select
+                value={subject}
+                onChange={(event) => setSubject(event.target.value as SubjectFilter)}
+                className="mt-1 h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
+              >
+                <option value="all">全部</option>
+                <option value="math">數學 ({summary.subjects.math})</option>
+                <option value="chinese">國文 ({summary.subjects.chinese})</option>
+                <option value="english">英文 ({summary.subjects.english})</option>
+                <option value="science">自然 ({summary.subjects.science})</option>
+                <option value="social">社會 ({summary.subjects.social})</option>
+                <option value="uncategorized">未分類 ({summary.subjects.uncategorized})</option>
               </select>
             </label>
             <label className="block">
@@ -638,6 +678,9 @@ function Upad12ReviewCard({
               {sourceLabel(row.source_area)}
             </span>
             <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
+              {subjectLabel(inferSubject(row))}
+            </span>
+            <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
               {methodLabel(row.match_method)}
             </span>
             <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
@@ -746,6 +789,53 @@ function StatusPill({ status }: { status: Upad12ReviewRow["teacher_review_status
       {config[0]}
     </span>
   );
+}
+
+function inferSubject(row: Upad12ReviewRow): SubjectFilter {
+  const evidence = row.evidence ?? {};
+  const text = [
+    row.external_label,
+    row.knowledge_unit_id ?? "",
+    ...(row.external_path ?? []),
+    toDisplay(evidence.subject),
+    toDisplay(evidence.subject_name),
+    toDisplay(evidence.node_path),
+    toDisplay(evidence.ku_content_titles),
+  ].join(" ");
+
+  if (hasAny(text, ["數學", "數學A", "數學B"])) return "math";
+  if (hasAny(text, ["國語", "國文", "中華文化", "閱讀", "寫作", "聆聽"])) return "chinese";
+  if (hasAny(text, ["英語", "英文"])) return "english";
+  if (hasAny(text, ["社會", "歷史", "地理", "公民"])) return "social";
+  if (hasAny(text, ["自然與生活科技", "自然(理化)", "自然(生物)", "自然(地科)", "物理", "化學", "生物", "地球科學", "科學"])) {
+    return "science";
+  }
+
+  const mathSignals = [
+    "數", "式", "量", "幾何", "圖形", "三角", "圓", "線", "角", "面積", "體積",
+    "方程", "函數", "比例", "分數", "小數", "百分率", "統計", "機率", "向量", "矩陣",
+    "指數", "對數", "多項式", "坐標", "截距", "斜率", "四則運算", "等比", "等差",
+  ];
+  if (hasAny(text, mathSignals)) return "math";
+
+  const scienceSignals = ["細胞", "植物", "動物", "太陽", "月球", "能量", "溫度", "電路", "酸鹼", "氧化", "岩石"];
+  if (hasAny(text, scienceSignals)) return "science";
+
+  return "uncategorized";
+}
+
+function subjectLabel(subject: SubjectFilter) {
+  if (subject === "math") return "數學";
+  if (subject === "chinese") return "國文";
+  if (subject === "english") return "英文";
+  if (subject === "science") return "自然";
+  if (subject === "social") return "社會";
+  if (subject === "uncategorized") return "未分類";
+  return "全部";
+}
+
+function hasAny(text: string, keywords: string[]) {
+  return keywords.some((keyword) => text.includes(keyword));
 }
 
 function sourceLabel(source: string) {
