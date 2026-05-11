@@ -369,6 +369,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [source, setSource] = useState<SourceFilter>("all");
   const [subject, setSubject] = useState<SubjectFilter>("all");
   const [status, setStatus] = useState<QueueStatus>("pending");
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [search, setSearch] = useState("");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [reviewerName, setReviewerName] = useState("");
@@ -445,6 +446,20 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
     });
   }, [rows, search, subject]);
 
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [source, subject, status, search]);
+
+  useEffect(() => {
+    if (filteredRows.length === 0) {
+      setCurrentIndex(0);
+      return;
+    }
+    setCurrentIndex((index) => Math.min(index, filteredRows.length - 1));
+  }, [filteredRows.length]);
+
+  const currentRow = filteredRows[currentIndex] ?? null;
+
   const summary = useMemo(() => {
     return rows.reduce(
       (acc, row) => {
@@ -511,24 +526,23 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   };
 
   return (
-    <div className="min-h-[calc(100vh-65px)] bg-[#f4f0e7] px-5 py-5">
-      <div className="mx-auto max-w-7xl">
-        <div className="grid gap-3 md:grid-cols-5">
-          <StatCard label="目前清單" value={summary.total} />
-          <StatCard label="待審" value={summary.pending} tone="warn" />
-          <StatCard label="通過" value={summary.approved} tone="good" />
-          <StatCard label="退回" value={summary.rejected} tone="danger" />
-          <StatCard label="需修正" value={summary.revised} tone="accent" />
-        </div>
+    <div className="min-h-[calc(100vh-65px)] bg-[#f4f0e7] bg-[linear-gradient(#e8e0d3_1px,transparent_1px),linear-gradient(90deg,#e8e0d3_1px,transparent_1px)] bg-[size:20px_20px] px-5 py-5">
+      <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[260px_1fr]">
+        <aside className="rounded-md border border-rule bg-paper/95 p-3 shadow-[0_12px_34px_rgba(28,37,34,.06)]">
+          <div className="grid grid-cols-2 gap-2">
+            <StatCard label="抽樣項目" value={summary.total} />
+            <StatCard label="已審查" value={summary.approved + summary.rejected + summary.revised} tone="good" />
+            <StatCard label="本清單" value={filteredRows.length} tone="warn" />
+            <StatCard label="目前筆" value={filteredRows.length ? currentIndex + 1 : 0} />
+          </div>
 
-        <div className="mt-4 rounded-md border border-rule bg-paper p-4">
-          <div className="grid gap-3 lg:grid-cols-[1fr_150px_150px_150px_220px_auto] lg:items-end">
+          <div className="mt-4 space-y-3">
             <label className="block">
               <span className="text-[12px] font-semibold text-ink-3">搜尋</span>
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="知識點、來源碼、路徑、KU ID"
+                placeholder="code / subject / text"
                 className="mt-1 h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
               />
             </label>
@@ -561,7 +575,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
               </select>
             </label>
             <label className="block">
-              <span className="text-[12px] font-semibold text-ink-3">狀態</span>
+              <span className="text-[12px] font-semibold text-ink-3">審查狀態</span>
               <select
                 value={status}
                 onChange={(event) => setStatus(event.target.value as QueueStatus)}
@@ -585,40 +599,43 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
             </label>
             <button
               onClick={() => void loadRows()}
-              className="h-10 rounded-md border border-ink bg-ink px-4 text-[14px] font-semibold text-paper"
+              className="h-10 w-full rounded-md border border-ink bg-ink px-4 text-[14px] font-semibold text-paper"
             >
-              重新整理
+              同步整理
             </button>
           </div>
-          <p className="mt-3 text-[12.5px] leading-6 text-ink-3">
-            UPAD12 資料只作為外部參考證據。老師在這裡通過，代表「可以作為參考覆蓋度或對齊證據」；
-            不代表它會直接變成正式課綱或知識點。
-          </p>
-        </div>
+        </aside>
 
-        {error && (
-          <div className="mt-4 rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
-            {error}
+        <section className="min-w-0">
+          <div className="mb-3 rounded-md border border-rule bg-[#fffdf8] px-4 py-3 text-[12.5px] leading-6 text-ink-3">
+            UPAD12 資料只作為外部參考證據。多人協作時，每位老師按下通過、修正或退回後都會寫入 Supabase，其他人的畫面會透過 Realtime 重新整理。
           </div>
-        )}
 
-        <div className="mt-4 grid gap-3">
+          {error && (
+            <div className="mb-3 rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
+              {error}
+            </div>
+          )}
+
           {loading && <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">載入 UPAD12 審核清單...</div>}
-          {!loading && filteredRows.length === 0 && (
+          {!loading && !currentRow && (
             <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">目前沒有符合條件的資料。</div>
           )}
-          {!loading &&
-            filteredRows.map((row) => (
-              <Upad12ReviewCard
-                key={row.id}
-                row={row}
-                note={notes[row.id] ?? ""}
-                saving={savingId === row.id}
-                onNoteChange={(value) => setNotes((prev) => ({ ...prev, [row.id]: value }))}
-                onDecision={(decision) => void decide(row, decision)}
-              />
-            ))}
-        </div>
+          {!loading && currentRow && (
+            <Upad12ReviewCard
+              key={currentRow.id}
+              row={currentRow}
+              note={notes[currentRow.id] ?? ""}
+              saving={savingId === currentRow.id}
+              index={currentIndex}
+              total={filteredRows.length}
+              onPrev={() => setCurrentIndex((index) => Math.max(0, index - 1))}
+              onNext={() => setCurrentIndex((index) => Math.min(filteredRows.length - 1, index + 1))}
+              onNoteChange={(value) => setNotes((prev) => ({ ...prev, [currentRow.id]: value }))}
+              onDecision={(decision) => void decide(currentRow, decision)}
+            />
+          )}
+        </section>
       </div>
     </div>
   );
@@ -655,12 +672,20 @@ function Upad12ReviewCard({
   row,
   note,
   saving,
+  index,
+  total,
+  onPrev,
+  onNext,
   onNoteChange,
   onDecision,
 }: {
   row: Upad12ReviewRow;
   note: string;
   saving: boolean;
+  index: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
   onNoteChange: (value: string) => void;
   onDecision: (decision: Decision) => void;
 }) {
@@ -669,9 +694,9 @@ function Upad12ReviewCard({
   const confidence = Math.round((row.confidence ?? 0) * 100);
 
   return (
-    <article className="rounded-md border border-rule bg-paper p-4 shadow-[0_12px_34px_rgba(28,37,34,.06)]">
-      <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-        <div>
+    <article className="rounded-md border border-rule bg-paper shadow-[0_12px_34px_rgba(28,37,34,.08)]">
+      <div className="flex items-start justify-between gap-4 border-b border-rule px-5 py-4">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={row.teacher_review_status} />
             <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
@@ -687,11 +712,17 @@ function Upad12ReviewCard({
               信心 {confidence}%
             </span>
           </div>
-
-          <h2 className="mt-3 text-[28px] font-semibold leading-tight">{row.external_label}</h2>
+          <h2 className="mt-3 text-[32px] font-semibold leading-tight md:text-[38px]">{row.external_label}</h2>
           <p className="mt-2 text-[13px] leading-6 text-ink-3">{path}</p>
+        </div>
+        <div className="shrink-0 text-right serif text-[34px] font-semibold text-[#1f5d78]">
+          {total ? index + 1 : 0}/{total}
+        </div>
+      </div>
 
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
+      <div className="grid gap-4 p-5 xl:grid-cols-[1fr_320px]">
+        <div>
+          <div className="grid gap-3 md:grid-cols-2">
             <InfoBlock label="對齊 KnowledgeUnit" value={row.knowledge_unit_id ?? "未指定"} />
             <InfoBlock label="UPAD12 來源碼" value={row.external_code} />
             <InfoBlock label="來源題數" value={toDisplay(evidence.question_count)} />
@@ -742,6 +773,23 @@ function Upad12ReviewCard({
               className="h-10 rounded-md border border-danger bg-danger/10 text-[13px] font-semibold text-danger disabled:opacity-50"
             >
               退回
+            </button>
+          </div>
+
+          <div className="mt-3 flex gap-2 border-t border-rule pt-3">
+            <button
+              disabled={index <= 0}
+              onClick={onPrev}
+              className="h-9 flex-1 rounded-md border border-rule-2 bg-white text-[13px] font-semibold disabled:opacity-45"
+            >
+              上一筆
+            </button>
+            <button
+              disabled={index >= total - 1}
+              onClick={onNext}
+              className="h-9 flex-1 rounded-md border border-rule-2 bg-white text-[13px] font-semibold disabled:opacity-45"
+            >
+              下一筆
             </button>
           </div>
         </div>
