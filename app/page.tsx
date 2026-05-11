@@ -51,9 +51,9 @@ const tabs = [
   },
   {
     key: "upad12" as const,
-    label: "UPAD12 教師審核",
-    eyebrow: "UPAD12",
-    description: "審查下載回來的外部資料是否可作為 KG 參考證據。",
+    label: "知識點 教師審核",
+    eyebrow: "POINTS",
+    description: "審查下載回來的全科知識點是否可作為 KG 參考證據。",
   },
 ] as const;
 
@@ -393,7 +393,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
     const allRows: Upad12ReviewRow[] = [];
     let loadError: Error | null = null;
 
-    for (let from = 0; from < 10000; from += pageSize) {
+    for (let from = 0; from < 50000; from += pageSize) {
       let query = supabase()
         .from("v_upad12_teacher_review_queue")
         .select("*")
@@ -566,7 +566,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[260px_1fr]">
         <aside className="rounded-md border border-rule bg-paper/95 p-3 shadow-[0_12px_34px_rgba(28,37,34,.06)]">
           <div className="grid grid-cols-2 gap-2">
-            <StatCard label="抽樣項目" value={summary.total} />
+            <StatCard label="知識點" value={summary.total} />
             <StatCard label="已審查" value={summary.approved + summary.rejected + summary.revised} tone="good" />
             <StatCard label="本清單" value={filteredRows.length} tone="warn" />
             <StatCard label="目前筆" value={filteredRows.length ? currentIndex + 1 : 0} />
@@ -658,7 +658,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
 
         <section className="min-w-0">
           <div className="mb-3 rounded-md border border-rule bg-[#fffdf8] px-4 py-3 text-[12.5px] leading-6 text-ink-3">
-            UPAD12 資料只作為外部參考證據。多人協作時，每位老師按下通過、修正或退回後都會寫入 Supabase，其他人的畫面會透過 Realtime 重新整理。
+            知識點資料只作為外部參考證據。多人協作時，每位老師按下通過、修正或退回後都會寫入 Supabase，其他人的畫面會透過 Realtime 重新整理。
           </div>
 
           {error && (
@@ -667,9 +667,9 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
             </div>
           )}
 
-          {loading && <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">載入 UPAD12 審核清單...</div>}
+          {loading && <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">載入知識點審核清單...</div>}
           {!loading && !currentRow && (
-            <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">目前沒有符合條件的資料。</div>
+            <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">目前沒有符合條件的知識點。</div>
           )}
           {!loading && currentRow && (
             <Upad12ReviewCard
@@ -777,7 +777,7 @@ function Upad12ReviewCard({
         <div>
           <div className="grid gap-3 md:grid-cols-2">
             <KnowledgeUnitDetail row={row} />
-            <InfoBlock label="UPAD12 來源碼" value={row.external_code} />
+            <InfoBlock label="來源碼" value={row.external_code} />
             <InfoBlock label="來源題數" value={toDisplay(evidence.question_count)} />
             <InfoBlock label="冊別 / 版本" value={[toDisplay(evidence.term), toDisplay(evidence.publisher)].filter(Boolean).join(" / ") || "未提供"} />
           </div>
@@ -853,17 +853,18 @@ function Upad12ReviewCard({
 
 function KnowledgeUnitDetail({ row }: { row: Upad12ReviewRow }) {
   const evidence = row.evidence ?? {};
-  const kuLabel = toDisplay(evidence.knowledge_unit_label) || row.knowledge_unit_id || "未指定";
+  const kuLabel = toDisplay(evidence.knowledge_unit_label) || row.external_label || row.knowledge_unit_id || "未指定";
   const kuType = toDisplay(evidence.knowledge_unit_type) || "未提供";
   const kuLevel = toDisplay(evidence.knowledge_unit_level) || levelLabel(inferLevel(row));
   const contentTitles = toDisplayList(evidence.ku_content_titles);
+  const sourcePath = toDisplayList(evidence.node_path);
 
   return (
     <div className="rounded-md border border-rule bg-white p-3 md:col-span-2">
-      <div className="text-[12px] font-semibold text-ink-3">對齊 KnowledgeUnit</div>
+      <div className="text-[12px] font-semibold text-ink-3">知識點 / 內部 KnowledgeUnit 狀態</div>
       <div className="mt-2 text-[20px] font-semibold leading-7 text-ink">{kuLabel}</div>
       <div className="mt-2 grid gap-2 md:grid-cols-3">
-        <SmallMeta label="KU ID" value={row.knowledge_unit_id ?? "未指定"} />
+        <SmallMeta label="KU ID" value={row.knowledge_unit_id ?? "尚未對齊"} />
         <SmallMeta label="類型" value={unitTypeLabel(kuType)} />
         <SmallMeta label="學段" value={kuLevel} />
       </div>
@@ -877,8 +878,14 @@ function KnowledgeUnitDetail({ row }: { row: Upad12ReviewRow }) {
           </ul>
         ) : (
           <p className="mt-2 text-[13.5px] leading-6 text-ink-2">
-            目前這筆只有 KU 名稱與 ID，正式 KnowledgeUnit 內容表尚未匯入；請先以 KU 名稱、UPAD12 路徑、系統對齊理由與題數覆蓋判斷。
+            目前這筆尚未對齊內部 KnowledgeUnit；請先以知識點名稱、來源路徑、系統理由與題數覆蓋判斷是否保留。
           </p>
+        )}
+        {sourcePath.length > 0 && (
+          <div className="mt-3 border-t border-rule pt-3">
+            <div className="text-[12px] font-semibold text-ink-3">來源路徑</div>
+            <p className="mt-1 text-[13.5px] leading-6 text-ink-2">{sourcePath.join(" / ")}</p>
+          </div>
         )}
       </div>
     </div>
