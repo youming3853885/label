@@ -73,6 +73,8 @@ export function AnnotatorView() {
   // "answer" pass = labeling answer/solution boxes (Q-number must match).
   const [pass, setPass] = useState<"question" | "answer">("question");
   const [busy, setBusy] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const stageWrapRef = useRef<HTMLDivElement>(null);
   const transformerRef = useRef<Konva.Transformer | null>(null);
   // Map of box id → Konva Rect node, populated via ref={} so Transformer
@@ -133,6 +135,33 @@ export function AnnotatorView() {
       localStorage.setItem(`label.stickySub.${params.id}`, String(currentSubInPass));
     }
   }, [params.id, currentSubInPass]);
+
+  useEffect(() => {
+    if (!annotatorName) return;
+    let cancelled = false;
+    supabase().auth.getUser().then(({ data }) => {
+      if (!cancelled) setUserId(data.user?.id ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [annotatorName]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onSyncError = (event: Event) => {
+      setSyncError((event as CustomEvent<string>).detail);
+    };
+    window.addEventListener("label-sync-error", onSyncError as EventListener);
+    const lastError = localStorage.getItem("label.lastSyncError");
+    if (lastError) {
+      setSyncError(lastError);
+      localStorage.removeItem("label.lastSyncError");
+    }
+    return () => {
+      window.removeEventListener("label-sync-error", onSyncError as EventListener);
+    };
+  }, [params.pageId]);
 
   // Load book + all pages + this page + boxes
   useEffect(() => {
@@ -302,8 +331,7 @@ export function AnnotatorView() {
     async (bbox: { x: number; y: number; w: number; h: number }) => {
       if (!page || !book || !annotatorName) return;
       const sb = supabase();
-      const { data: userData } = await sb.auth.getUser();
-      const created_by = userData.user?.id ?? null;
+      const created_by = userId;
 
       // Question-number resolution rules:
       //   answer pass         → use pairingQNum (the dropdown choice)
@@ -386,7 +414,7 @@ export function AnnotatorView() {
         advancePairingQ(1);
       }
     },
-    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, nextUnitTitleNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass, boxes],
+    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, nextUnitTitleNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass, boxes, userId],
   );
 
   // Patch (update) an existing box — used for difficulty / qnum / option_letter
@@ -417,54 +445,52 @@ export function AnnotatorView() {
     if (selected?.id === id) setSelected(null);
   }, [selected]);
 
-  // Mark page verified + jump to next page
-  const verifyPage = useCallback(async () => {
-    if (!page) return;
+  const markPageAndMove = useCallback((status: "human_verified" | "skipped") => {
+    if (!page || !book || busy) return;
     setBusy(true);
-    const sb = supabase();
-    const { data: userData } = await sb.auth.getUser();
-    await sb
-      .from("annotation_pages")
-      .update({
-        status: "human_verified",
-        verified_by: userData.user?.id,
-        verified_by_name: annotatorName,
-        verified_at: new Date().toISOString(),
-      })
-      .eq("id", page.id);
-    // Find next non-verified page
-    const idx = allPages.findIndex((p) => p.id === page.id);
-    const next = allPages.slice(idx + 1).find(
-      (p) => p.status !== "human_verified" && p.status !== "skipped",
-    );
-    setBusy(false);
-    if (next) router.push(`/book/${book!.id}/page/${next.id}`);
-    else router.push(`/book/${book!.id}`);
-  }, [page, allPages, book, annotatorName, router]);
 
-  // Mark page skipped (e.g., TOC, copyright, blank)
-  const skipPage = useCallback(async () => {
-    if (!page) return;
-    setBusy(true);
-    const sb = supabase();
-    const { data: userData } = await sb.auth.getUser();
-    await sb
-      .from("annotation_pages")
-      .update({
-        status: "skipped",
-        verified_by: userData.user?.id,
-        verified_by_name: annotatorName,
-        verified_at: new Date().toISOString(),
-      })
-      .eq("id", page.id);
+    const patch = {
+      status,
+      verified_by: userId,
+      verified_by_name: annotatorName,
+      verified_at: new Date().toISOString(),
+    };
+
+    setSyncError(null);
+    setPage((p) => (p?.id === page.id ? { ...p, ...patch } : p));
+    setAllPages((ps) => ps.map((p) => (p.id === page.id ? { ...p, ...patch } : p)));
+
     const idx = allPages.findIndex((p) => p.id === page.id);
     const next = allPages.slice(idx + 1).find(
       (p) => p.status !== "human_verified" && p.status !== "skipped",
     );
-    setBusy(false);
+
     if (next) router.push(`/book/${book!.id}/page/${next.id}`);
     else router.push(`/book/${book!.id}`);
-  }, [page, allPages, book, annotatorName, router]);
+
+    void supabase()
+      .from("annotation_pages")
+      .update(patch)
+      .eq("id", page.id)
+      .then(({ error }) => {
+        if (error) {
+          const message = `本頁同步失敗：${error.message}`;
+          console.error(message);
+          localStorage.setItem("label.lastSyncError", message);
+          window.dispatchEvent(new CustomEvent("label-sync-error", { detail: message }));
+        }
+      });
+  }, [page, allPages, book, annotatorName, router, userId, busy]);
+
+  // Mark page verified + jump immediately; DB write continues in background.
+  const verifyPage = useCallback(() => {
+    markPageAndMove("human_verified");
+  }, [markPageAndMove]);
+
+  // Mark page skipped (e.g., TOC, copyright, blank).
+  const skipPage = useCallback(() => {
+    markPageAndMove("skipped");
+  }, [markPageAndMove]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -814,6 +840,18 @@ export function AnnotatorView() {
 
         {/* Sidebar */}
         <div className="col-span-3 flex flex-col gap-3 text-[13px]">
+          {syncError && (
+            <div className="rounded-md border border-danger/30 bg-danger/10 p-3 text-[12px] leading-5 text-danger">
+              <div className="font-semibold">同步提醒</div>
+              <div>{syncError}</div>
+              <button
+                onClick={() => setSyncError(null)}
+                className="mt-2 text-[11px] underline"
+              >
+                關閉
+              </button>
+            </div>
+          )}
           <div className="rounded-md border border-rule-2 bg-[#fffdf8] p-3">
             <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-3">
               難度標註進度
