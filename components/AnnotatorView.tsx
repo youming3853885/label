@@ -67,6 +67,7 @@ export function AnnotatorView() {
   // Drawing state
   const [drawing, setDrawing] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [activeType, setActiveType] = useState<BoxType>("question");
+  const [activeDifficulty, setActiveDifficulty] = useState<Difficulty>("medium");
   const [pendingNumber, setPendingNumber] = useState<number | null>(null);
   const [selected, setSelected] = useState<Box | null>(null);
   // "question" pass = labeling question stems (auto-incrementing Q-number).
@@ -362,6 +363,7 @@ export function AnnotatorView() {
           bbox,
           question_number: qnum,
           sub_number: snum,
+          difficulty: activeType === "question" ? activeDifficulty : null,
           annotator_name: annotatorName,
           created_by,
           source: "human",
@@ -384,7 +386,7 @@ export function AnnotatorView() {
         advancePairingQ(1);
       }
     },
-    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, nextUnitTitleNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass, boxes],
+    [page, book, annotatorName, activeType, activeDifficulty, pendingNumber, nextQuestionNumber, nextUnitTitleNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass, boxes],
   );
 
   // Patch (update) an existing box — used for difficulty / qnum / option_letter
@@ -822,6 +824,31 @@ export function AnnotatorView() {
               </button>
             ))}
           </div>
+
+          {activeType === "question" && (
+            <>
+              <SectionTitle>新題難度</SectionTitle>
+              <div className="grid grid-cols-3 gap-1.5 rounded-md border border-rule-2 bg-rule/20 p-2">
+                {(["easy","medium","hard"] as Difficulty[]).map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setActiveDifficulty(d)}
+                    className={
+                      "h-8 rounded border text-[12px] font-semibold transition-colors " +
+                      (activeDifficulty === d
+                        ? "border-ink bg-ink text-paper"
+                        : "border-rule-2 bg-paper text-ink-2 hover:bg-rule/40")
+                    }
+                  >
+                    {DIFFICULTY_LABEL[d]}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[10px] leading-5 text-ink-3">
+                畫新的題幹框時會自動寫入這個難度；已畫好的題目可在「已選」面板修改。
+              </div>
+            </>
+          )}
 
           <SectionTitle>模式 (Tab 切換)</SectionTitle>
           <div className="flex gap-1.5">
