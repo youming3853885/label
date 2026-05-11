@@ -155,6 +155,21 @@ export default function ReviewPortalPage() {
             ))}
 
             <a
+              href="/label?mode=practice"
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-md border border-paper/10 bg-white/5 px-3 py-3 text-paper/78 transition hover:bg-white/10"
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">
+                PRACTICE
+              </div>
+              <div className="mt-1 text-[15px] font-semibold">實力驗收</div>
+              <p className="mt-1 text-[12px] leading-5 opacity-70">
+                開啟新分頁校稿實力驗收 PDF。
+              </p>
+            </a>
+
+            <a
               href="/label"
               target="_blank"
               rel="noreferrer"

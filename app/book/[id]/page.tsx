@@ -55,7 +55,12 @@ export default function BookPage() {
     <main className="min-h-screen bg-paper">
       <div className="border-b border-rule bg-paper">
         <div className="max-w-6xl mx-auto px-6 h-12 flex items-center gap-4">
-          <Link href="/label" className="text-[13px] text-ink-3 hover:text-ink">← 全部書本</Link>
+          <Link
+            href={book.edition === "實力驗收" ? "/label?mode=practice" : "/label"}
+            className="text-[13px] text-ink-3 hover:text-ink"
+          >
+            ← 全部書本
+          </Link>
           <div className="flex-1 serif text-[15px] font-semibold truncate">{book.title}</div>
           <span className="text-[10px] uppercase tracking-wider text-ink-3 border border-rule-2 px-2 py-0.5 rounded">
             {book.source_tier}

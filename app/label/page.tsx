@@ -18,6 +18,9 @@ export default function LabelHomePage() {
   const [loading, setLoading] = useState(true);
   const [books, setBooks] = useState<Book[]>([]);
   const [filterLevel, setFilterLevel] = useState<string>("國中");
+  const [mode, setMode] = useState<"all" | "practice">("all");
+
+  const isPracticeMode = mode === "practice";
 
   useEffect(() => {
     const sb = supabase();
@@ -34,15 +37,29 @@ export default function LabelHomePage() {
   }, []);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("mode") === "practice") {
+      setMode("practice");
+      setFilterLevel("國中");
+    }
+  }, []);
+
+  useEffect(() => {
     if (!user) return;
     const sb = supabase();
-    sb.from("v_annotation_books")
+    let query = sb.from("v_annotation_books")
       .select("*")
-      .eq("level", filterLevel)
+      .eq("level", filterLevel);
+
+    if (isPracticeMode) {
+      query = query.eq("edition", "實力驗收");
+    }
+
+    query
       .order("subject", { ascending: true })
       .order("grade", { ascending: true })
       .then(({ data }) => setBooks((data as Book[]) ?? []));
-  }, [user, filterLevel]);
+  }, [user, filterLevel, isPracticeMode]);
 
   if (loading) {
     return <Centered>載入中...</Centered>;
@@ -61,9 +78,13 @@ export default function LabelHomePage() {
             <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-accent">
               label
             </p>
-            <h1 className="serif mt-1 text-[34px] font-semibold">講義標註</h1>
+            <h1 className="serif mt-1 text-[34px] font-semibold">
+              {isPracticeMode ? "實力驗收校稿" : "講義標註"}
+            </h1>
             <p className="mt-2 max-w-2xl text-[14px] leading-7 text-ink-3">
-              選擇講義後逐頁標註題目、選項、答案、詳解與圖形區塊。所有標註會寫回 Supabase，供後續題庫整理與 AI 檢索使用。
+              {isPracticeMode
+                ? "國中全科實力驗收 PDF 已獨立分頁，人員可逐頁校稿、標註題目與答案，結果同步寫回 Supabase。"
+                : "選擇講義後逐頁標註題目、選項、答案、詳解與圖形區塊。所有標註會寫回 Supabase，供後續題庫整理與 AI 檢索使用。"}
             </p>
           </div>
           <Link
