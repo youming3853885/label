@@ -67,7 +67,6 @@ export function AnnotatorView() {
   // Drawing state
   const [drawing, setDrawing] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [activeType, setActiveType] = useState<BoxType>("question");
-  const [activeDifficulty, setActiveDifficulty] = useState<Difficulty>("medium");
   const [pendingNumber, setPendingNumber] = useState<number | null>(null);
   const [selected, setSelected] = useState<Box | null>(null);
   // "question" pass = labeling question stems (auto-incrementing Q-number).
@@ -365,7 +364,6 @@ export function AnnotatorView() {
           bbox,
           question_number: qnum,
           sub_number: snum,
-          difficulty: activeType === "question" ? activeDifficulty : null,
           annotator_name: annotatorName,
           created_by,
           source: "human",
@@ -388,7 +386,7 @@ export function AnnotatorView() {
         advancePairingQ(1);
       }
     },
-    [page, book, annotatorName, activeType, activeDifficulty, pendingNumber, nextQuestionNumber, nextUnitTitleNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass, boxes],
+    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, nextUnitTitleNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass, boxes],
   );
 
   // Patch (update) an existing box — used for difficulty / qnum / option_letter
@@ -843,31 +841,6 @@ export function AnnotatorView() {
             ))}
           </div>
 
-          {activeType === "question" && (
-            <>
-              <SectionTitle>新題難度</SectionTitle>
-              <div className="grid grid-cols-3 gap-1.5 rounded-md border border-rule-2 bg-rule/20 p-2">
-                {(["easy","medium","hard"] as Difficulty[]).map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setActiveDifficulty(d)}
-                    className={
-                      "h-8 rounded border text-[12px] font-semibold transition-colors " +
-                      (activeDifficulty === d
-                        ? "border-ink bg-ink text-paper"
-                        : "border-rule-2 bg-paper text-ink-2 hover:bg-rule/40")
-                    }
-                  >
-                    {DIFFICULTY_LABEL[d]}
-                  </button>
-                ))}
-              </div>
-              <div className="text-[10px] leading-5 text-ink-3">
-                畫新的題幹框時會自動寫入這個難度；已畫好的題目可在「已選」面板修改。
-              </div>
-            </>
-          )}
-
           <SectionTitle>模式 (Tab 切換)</SectionTitle>
           <div className="flex gap-1.5">
             <button
@@ -1227,7 +1200,7 @@ function SelectedPanel({
   onPatch: (id: string, patch: Partial<Box>) => void;
   onDelete: () => void;
 }) {
-  const canGuideDifficulty = ["option", "answer", "solution", "figure"].includes(box.type);
+  const canGuideDifficulty = box.type === "answer";
   const needsDifficultyGuide =
     canGuideDifficulty && box.question_number != null && !!linkedQuestion;
 
@@ -1331,26 +1304,6 @@ function SelectedPanel({
               <option value="123456">123456（6 選項）</option>
             </optgroup>
           </select>
-        </>
-      )}
-
-      {box.type === "question" && (
-        <>
-          <label className="block text-[11px] text-ink-3">難易度</label>
-          <div className="flex gap-1">
-            {(["easy","medium","hard"] as Difficulty[]).map((d) => (
-              <button
-                key={d}
-                onClick={() => onPatch(box.id, { difficulty: d })}
-                className={
-                  "flex-1 px-2 py-1 rounded text-[12px] border " +
-                  (box.difficulty === d ? "bg-ink text-paper border-ink" : "bg-paper text-ink-2 border-rule-2")
-                }
-              >
-                {DIFFICULTY_LABEL[d]}
-              </button>
-            ))}
-          </div>
         </>
       )}
 
