@@ -970,6 +970,9 @@ function inferLevel(row: Upad12ReviewRow): LevelFilter {
 
 function inferSubject(row: Upad12ReviewRow): SubjectFilter {
   const evidence = row.evidence ?? {};
+  const explicitSubject = normalizeSubjectName(toDisplay(evidence.subject_name) || toDisplay(evidence.subject));
+  if (explicitSubject !== "uncategorized") return explicitSubject;
+
   const text = [
     row.external_label,
     row.knowledge_unit_id ?? "",
@@ -998,6 +1001,19 @@ function inferSubject(row: Upad12ReviewRow): SubjectFilter {
   const scienceSignals = ["細胞", "植物", "動物", "太陽", "月球", "能量", "溫度", "電路", "酸鹼", "氧化", "岩石"];
   if (hasAny(text, scienceSignals)) return "science";
 
+  return "uncategorized";
+}
+
+function normalizeSubjectName(subjectName: string): SubjectFilter {
+  if (["數學", "數學A", "數學B"].includes(subjectName)) return "math";
+  if (["國語", "國語(首冊)", "國文", "國寫"].includes(subjectName)) return "chinese";
+  if (["英語", "英文"].includes(subjectName)) return "english";
+  if (["自然與生活科技", "自然(理化)", "自然(生物)", "自然(地科)", "物理", "化學", "生物", "基礎地球科學"].includes(subjectName)) {
+    return "science";
+  }
+  if (["社會", "社會(歷史)", "社會(地理)", "社會(公民)", "歷史", "地理", "公民與社會", "選修歷史", "選修地理"].includes(subjectName)) {
+    return "social";
+  }
   return "uncategorized";
 }
 
