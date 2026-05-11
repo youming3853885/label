@@ -401,7 +401,6 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         .range(from, from + pageSize - 1);
 
       if (source !== "all") query = query.eq("source_area", source);
-      if (status !== "all") query = query.eq("teacher_review_status", status);
 
       const { data, error: pageError } = await query;
       if (pageError) {
@@ -420,7 +419,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       setRows(allRows);
     }
     setLoading(false);
-  }, [source, status]);
+  }, [source]);
 
   useEffect(() => {
     void loadRows();
@@ -449,6 +448,9 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       if (subject !== "all" && inferSubject(row) !== subject) {
         return false;
       }
+      if (status !== "all" && row.teacher_review_status !== status) {
+        return false;
+      }
       if (!keyword) return true;
       const haystack = [
         row.external_label,
@@ -466,7 +468,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         .toLowerCase();
       return haystack.includes(keyword);
     });
-  }, [rows, level, search, subject]);
+  }, [rows, level, search, subject, status]);
 
   useEffect(() => {
     setCurrentIndex(0);
