@@ -7,6 +7,7 @@ type TabKey = "kg" | "t0" | "upad12";
 type Decision = "approved" | "rejected" | "revised";
 type QueueStatus = "all" | "pending" | "approved" | "rejected" | "revised";
 type SourceFilter = "all" | "concept3" | "quick";
+type LevelFilter = "all" | "elementary" | "junior_high" | "senior_high" | "uncategorized";
 type SubjectFilter = "all" | "math" | "chinese" | "english" | "science" | "social" | "uncategorized";
 
 type Upad12ReviewRow = {
@@ -367,6 +368,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<SourceFilter>("all");
+  const [level, setLevel] = useState<LevelFilter>("all");
   const [subject, setSubject] = useState<SubjectFilter>("all");
   const [status, setStatus] = useState<QueueStatus>("pending");
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -427,6 +429,9 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     return rows.filter((row) => {
+      if (level !== "all" && inferLevel(row) !== level) {
+        return false;
+      }
       if (subject !== "all" && inferSubject(row) !== subject) {
         return false;
       }
@@ -439,6 +444,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         toDisplay(row.evidence?.ku_content_titles),
         row.match_method,
         row.source_area,
+        levelLabel(inferLevel(row)),
         subjectLabel(inferSubject(row)),
         ...(row.external_path ?? []),
       ]
@@ -446,11 +452,11 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         .toLowerCase();
       return haystack.includes(keyword);
     });
-  }, [rows, search, subject]);
+  }, [rows, level, search, subject]);
 
   useEffect(() => {
     setCurrentIndex(0);
-  }, [source, subject, status, search]);
+  }, [source, level, subject, status, search]);
 
   useEffect(() => {
     if (filteredRows.length === 0) {
@@ -465,11 +471,18 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const summary = useMemo(() => {
     return rows.reduce(
       (acc, row) => {
+        const rowLevel = inferLevel(row);
+        const rowSubject = inferSubject(row);
         acc.total += 1;
         acc[row.teacher_review_status] += 1;
         if (row.source_area === "quick") acc.quick += 1;
         if (row.source_area === "concept3") acc.concept3 += 1;
-        acc.subjects[inferSubject(row)] += 1;
+        if (subject === "all" || rowSubject === subject) {
+          acc.levels[rowLevel] += 1;
+        }
+        if (level === "all" || rowLevel === level) {
+          acc.subjects[rowSubject] += 1;
+        }
         return acc;
       },
       {
@@ -480,6 +493,13 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         revised: 0,
         quick: 0,
         concept3: 0,
+        levels: {
+          all: 0,
+          elementary: 0,
+          junior_high: 0,
+          senior_high: 0,
+          uncategorized: 0,
+        } as Record<LevelFilter, number>,
         subjects: {
           all: 0,
           math: 0,
@@ -491,7 +511,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         } as Record<SubjectFilter, number>,
       },
     );
-  }, [rows]);
+  }, [level, rows, subject]);
 
   const decide = async (row: Upad12ReviewRow, decision: Decision) => {
     setSavingId(row.id);
@@ -574,6 +594,20 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
                 <option value="science">自然 ({summary.subjects.science})</option>
                 <option value="social">社會 ({summary.subjects.social})</option>
                 <option value="uncategorized">未分類 ({summary.subjects.uncategorized})</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-[12px] font-semibold text-ink-3">學段</span>
+              <select
+                value={level}
+                onChange={(event) => setLevel(event.target.value as LevelFilter)}
+                className="mt-1 h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
+              >
+                <option value="all">全部</option>
+                <option value="elementary">國小 ({summary.levels.elementary})</option>
+                <option value="junior_high">國中 ({summary.levels.junior_high})</option>
+                <option value="senior_high">高中 ({summary.levels.senior_high})</option>
+                <option value="uncategorized">未分類 ({summary.levels.uncategorized})</option>
               </select>
             </label>
             <label className="block">
@@ -705,6 +739,9 @@ function Upad12ReviewCard({
               {sourceLabel(row.source_area)}
             </span>
             <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
+              {levelLabel(inferLevel(row))}
+            </span>
+            <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
               {subjectLabel(inferSubject(row))}
             </span>
             <span className="rounded-full border border-rule-2 px-2.5 py-1 text-[12px] text-ink-3">
@@ -804,7 +841,7 @@ function KnowledgeUnitDetail({ row }: { row: Upad12ReviewRow }) {
   const evidence = row.evidence ?? {};
   const kuLabel = toDisplay(evidence.knowledge_unit_label) || row.knowledge_unit_id || "未指定";
   const kuType = toDisplay(evidence.knowledge_unit_type) || "未提供";
-  const kuLevel = toDisplay(evidence.knowledge_unit_level) || "未提供";
+  const kuLevel = toDisplay(evidence.knowledge_unit_level) || levelLabel(inferLevel(row));
   const contentTitles = toDisplayList(evidence.ku_content_titles);
 
   return (
@@ -884,6 +921,32 @@ function StatusPill({ status }: { status: Upad12ReviewRow["teacher_review_status
   );
 }
 
+function inferLevel(row: Upad12ReviewRow): LevelFilter {
+  const evidence = row.evidence ?? {};
+  const text = [
+    row.knowledge_unit_id ?? "",
+    ...(row.external_path ?? []),
+    toDisplay(evidence.knowledge_unit_level),
+    toDisplay(evidence.level),
+    toDisplay(evidence.education_level),
+    toDisplay(evidence.node_path),
+  ].join(" ");
+
+  const gradeMatch = text.match(/\bG(\d{1,2})\b/i);
+  if (gradeMatch) {
+    const grade = Number(gradeMatch[1]);
+    if (grade >= 1 && grade <= 6) return "elementary";
+    if (grade >= 7 && grade <= 9) return "junior_high";
+    if (grade >= 10 && grade <= 12) return "senior_high";
+  }
+
+  if (hasAny(text, ["國小", "elementary"])) return "elementary";
+  if (hasAny(text, ["國中", "junior", "junior_high"])) return "junior_high";
+  if (hasAny(text, ["高中", "senior", "senior_high"])) return "senior_high";
+
+  return "uncategorized";
+}
+
 function inferSubject(row: Upad12ReviewRow): SubjectFilter {
   const evidence = row.evidence ?? {};
   const text = [
@@ -924,6 +987,14 @@ function subjectLabel(subject: SubjectFilter) {
   if (subject === "science") return "自然";
   if (subject === "social") return "社會";
   if (subject === "uncategorized") return "未分類";
+  return "全部";
+}
+
+function levelLabel(level: LevelFilter) {
+  if (level === "elementary") return "國小";
+  if (level === "junior_high") return "國中";
+  if (level === "senior_high") return "高中";
+  if (level === "uncategorized") return "未分類";
   return "全部";
 }
 
