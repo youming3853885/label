@@ -435,6 +435,8 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         row.external_label,
         row.external_code,
         row.knowledge_unit_id ?? "",
+        toDisplay(row.evidence?.knowledge_unit_label),
+        toDisplay(row.evidence?.ku_content_titles),
         row.match_method,
         row.source_area,
         subjectLabel(inferSubject(row)),
@@ -723,7 +725,7 @@ function Upad12ReviewCard({
       <div className="grid gap-4 p-5 xl:grid-cols-[1fr_320px]">
         <div>
           <div className="grid gap-3 md:grid-cols-2">
-            <InfoBlock label="對齊 KnowledgeUnit" value={row.knowledge_unit_id ?? "未指定"} />
+            <KnowledgeUnitDetail row={row} />
             <InfoBlock label="UPAD12 來源碼" value={row.external_code} />
             <InfoBlock label="來源題數" value={toDisplay(evidence.question_count)} />
             <InfoBlock label="冊別 / 版本" value={[toDisplay(evidence.term), toDisplay(evidence.publisher)].filter(Boolean).join(" / ") || "未提供"} />
@@ -795,6 +797,49 @@ function Upad12ReviewCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function KnowledgeUnitDetail({ row }: { row: Upad12ReviewRow }) {
+  const evidence = row.evidence ?? {};
+  const kuLabel = toDisplay(evidence.knowledge_unit_label) || row.knowledge_unit_id || "未指定";
+  const kuType = toDisplay(evidence.knowledge_unit_type) || "未提供";
+  const kuLevel = toDisplay(evidence.knowledge_unit_level) || "未提供";
+  const contentTitles = toDisplayList(evidence.ku_content_titles);
+
+  return (
+    <div className="rounded-md border border-rule bg-white p-3 md:col-span-2">
+      <div className="text-[12px] font-semibold text-ink-3">對齊 KnowledgeUnit</div>
+      <div className="mt-2 text-[20px] font-semibold leading-7 text-ink">{kuLabel}</div>
+      <div className="mt-2 grid gap-2 md:grid-cols-3">
+        <SmallMeta label="KU ID" value={row.knowledge_unit_id ?? "未指定"} />
+        <SmallMeta label="類型" value={unitTypeLabel(kuType)} />
+        <SmallMeta label="學段" value={kuLevel} />
+      </div>
+      <div className="mt-3 rounded-md border border-rule bg-[#fffdf8] p-3">
+        <div className="text-[12px] font-semibold text-ink-3">源頭內容</div>
+        {contentTitles.length > 0 ? (
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-[13.5px] leading-6 text-ink-2">
+            {contentTitles.map((title) => (
+              <li key={title}>{title}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-[13.5px] leading-6 text-ink-2">
+            目前這筆只有 KU 名稱與 ID，正式 KnowledgeUnit 內容表尚未匯入；請先以 KU 名稱、UPAD12 路徑、系統對齊理由與題數覆蓋判斷。
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SmallMeta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-rule bg-[#fbfaf6] px-3 py-2">
+      <div className="text-[11px] font-semibold text-ink-3">{label}</div>
+      <div className="mt-1 break-all text-[13px] leading-5 text-ink-2">{value}</div>
+    </div>
   );
 }
 
@@ -899,6 +944,24 @@ function methodLabel(method: string) {
   if (method === "embedding") return "語意相近";
   if (method === "manual") return "人工指定";
   return method;
+}
+
+function unitTypeLabel(type: string) {
+  if (type === "concept") return "概念";
+  if (type === "skill") return "技能";
+  if (type === "problem_type") return "題型";
+  if (type === "representation") return "表徵";
+  if (type === "attribute") return "屬性";
+  return type;
+}
+
+function toDisplayList(value: unknown) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => toDisplay(item)).filter(Boolean);
+  }
+  const text = toDisplay(value);
+  return text ? [text] : [];
 }
 
 function toDisplay(value: unknown) {
