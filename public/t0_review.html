@@ -293,7 +293,7 @@
   <header>
     <div>
       <h1>&#x0054;&#x0030; &#x8AB2;&#x7DB1;&#x62BD;&#x6A23;&#x5BE9;&#x67E5;&#x5DE5;&#x4F5C;&#x53F0;</h1>
-      <div class="subtitle">&#x570B;&#x5C0F;&#x8207;&#x9AD8;&#x4E2D;&#x5168;&#x79D1; T0 &#x76EE;&#x524D;&#x662F;&#x6A5F;&#x5668;&#x9A57;&#x8B49;&#x7684;&#x5B98;&#x65B9;&#x8AB2;&#x7DB1;&#x62BD;&#x53D6;&#x8CC7;&#x6599;&#xFF0C;&#x4E0D;&#x7B49;&#x65BC;&#x6559;&#x5E2B;&#x5BE9;&#x6838;&#x5B8C;&#x6210;&#x3002;</div>
+      <div class="subtitle">&#x570B;&#x5C0F;&#x8207;&#x9AD8;&#x4E2D;&#x5168;&#x79D1; T0 &#x76EE;&#x524D;&#x662F;&#x6A5F;&#x5668;&#x9A57;&#x8B49;&#x7684;&#x5B98;&#x65B9;&#x8AB2;&#x7DB1;&#x62BD;&#x53D6;&#x8CC7;&#x6599;&#xFF0C;&#x4E0D;&#x7B49;&#x65BC;&#x6559;&#x5E2B;&#x5BE9;&#x6838;&#x5B8C;&#x6210;&#x3002;&#x6309;&#x4E0B;&#x901A;&#x904E;&#x3001;&#x7DE8;&#x8F2F;&#x6216;&#x9000;&#x56DE;&#x5F8C;&#xFF0C;&#x6703;&#x81EA;&#x52D5;&#x5BEB;&#x5165; Supabase T0 staging &#x8207;&#x6559;&#x5E2B;&#x5BE9;&#x6838;&#x7D00;&#x9304;&#xFF1B;CSV / JSON &#x50C5;&#x4F5C;&#x5099;&#x4EFD;&#x3002;</div>
     </div>
     <div class="toolbar">
       <button id="exportJsonBtn" type="button">&#x532F;&#x51FA; JSON</button>
@@ -498,6 +498,8 @@
       await requireSession();
       const item = state.items.find((entry) => entry.review_id === reviewId);
       if (!item) return;
+      const { data: userData, error: userError } = await supabaseClient.auth.getUser();
+      if (userError) throw userError;
       const decision = decisionFor(item);
       const view = decision.edited_item || item;
       const reviewedAt = decision.reviewed_at || new Date().toISOString();
@@ -511,13 +513,26 @@
           note: decision.note || '',
           edited_item: decision.edited_item || null,
           payload: {
+            review_id: item.review_id,
+            t0_id: item.t0_id,
+            level_id: view.level_id,
             level: view.level,
+            subject_id: view.subject_id,
             subject: view.subject,
             code: view.code,
             indicator_type: view.indicator_type,
-            sampling_reason: item.sampling_reason
+            domain: view.domain,
+            sub_domain: view.sub_domain,
+            description: view.description,
+            source_page: view.source_page,
+            source_excerpt: view.source_excerpt,
+            source_pdf_sha256: view.source_pdf_sha256,
+            sampling_reason: item.sampling_reason,
+            validation_status: item.validation_status,
+            anomaly_flags: item.anomaly_flags
           },
           reviewer_name: reviewerName(),
+          reviewer_id: userData.user?.id || null,
           source_page: Number.isFinite(sourcePage) ? sourcePage : null,
           client_id: state.clientId,
           reviewed_at: reviewedAt,
