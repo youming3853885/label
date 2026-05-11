@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -p 3100",
     "lint": "next lint",
-    "type": "tsc --noEmit"
+    "type": "tsc --noEmit",
+    "build:t0-review": "node scripts/build_t0_review_items.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
