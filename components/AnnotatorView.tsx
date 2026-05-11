@@ -1227,8 +1227,9 @@ function SelectedPanel({
   onPatch: (id: string, patch: Partial<Box>) => void;
   onDelete: () => void;
 }) {
+  const canGuideDifficulty = ["option", "answer", "solution", "figure"].includes(box.type);
   const needsDifficultyGuide =
-    box.type !== "question" && box.question_number != null && !!linkedQuestion;
+    canGuideDifficulty && box.question_number != null && !!linkedQuestion;
 
   return (
     <div className="border border-rule-2 rounded p-3 space-y-2 bg-rule/20">
@@ -1261,6 +1262,12 @@ function SelectedPanel({
         </div>
       )}
 
+      {box.type === "unit_title" && (
+        <div className="rounded-md border border-ann-unit/30 bg-ann-unit/10 p-2 text-[11px] leading-5 text-ink-3">
+          單元概念只用來標知識點或章節概念，不設定簡單 / 中等 / 困難。
+        </div>
+      )}
+
       {needsDifficultyGuide && linkedQuestion && (
         <div className="rounded-md border-2 border-warn bg-warn/10 p-3 shadow-[0_0_0_3px_rgba(204,137,0,0.10)]">
           <div className="text-[11px] font-semibold text-warn">
@@ -1288,7 +1295,7 @@ function SelectedPanel({
         </div>
       )}
 
-      {box.type !== "question" && box.question_number != null && !linkedQuestion && (
+      {canGuideDifficulty && box.question_number != null && !linkedQuestion && (
         <div className="rounded-md border border-warn/40 bg-warn/10 p-2 text-[11px] leading-5 text-warn">
           這個框有 Q{box.question_number}，但目前找不到對應題幹框；請先建立或修正題幹 Q{box.question_number}，再設定難度。
         </div>
