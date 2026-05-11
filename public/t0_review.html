@@ -407,7 +407,9 @@
       decisions: JSON.parse(localStorage.getItem('t0ReviewDecisions') || '{}'),
       clientId: clientId(),
       sharedReady: false,
-      sharedChannel: null
+      sharedChannel: null,
+      stagingReady: false,
+      stagingChannel: null
     };
 
     const els = {
@@ -478,6 +480,99 @@
       };
     }
 
+    function levelLabel(levelId) {
+      return {
+        elementary: '\u570b\u5c0f',
+        junior_high: '\u570b\u4e2d',
+        senior_high: '\u9ad8\u4e2d',
+        high_school: '\u9ad8\u4e2d'
+      }[levelId] || levelId || '';
+    }
+
+    function subjectLabel(subjectId) {
+      return {
+        chinese: '\u570b\u6587',
+        english: '\u82f1\u6587',
+        math: '\u6578\u5b78',
+        science: '\u81ea\u7136',
+        social: '\u793e\u6703'
+      }[subjectId] || subjectId || '';
+    }
+
+    function normalizeLevelId(levelId) {
+      if (levelId === 'high_school' || levelId === 'senior') return 'senior_high';
+      if (levelId === 'junior' || levelId === 'middle_school') return 'junior_high';
+      return levelId || 'elementary';
+    }
+
+    function validDecisionStatus(status) {
+      return ['pending', 'approved', 'rejected', 'revised'].includes(status) ? status : 'pending';
+    }
+
+    function stagingRowToItem(row) {
+      const raw = row.raw_payload || {};
+      const payload = raw.payload || {};
+      const levelId = normalizeLevelId(payload.level_id || row.education_level);
+      const subjectId = payload.subject_id || row.subject || '';
+      const reviewId = raw.review_id || payload.review_id || `review:${row.t0_id || row.id}`;
+      const samplingReason = raw.sampling_reason || payload.sampling_reason || 'staging_pending_review';
+      return {
+        review_id: reviewId,
+        t0_id: row.t0_id,
+        level_id: levelId,
+        level: payload.level || levelLabel(levelId),
+        subject_id: subjectId,
+        subject: payload.subject || subjectLabel(subjectId),
+        code: payload.code || row.code || '',
+        indicator_type: payload.indicator_type || row.category || '',
+        source_kind: payload.source_kind || row.source_kind || '',
+        domain: payload.domain || row.domain || '',
+        sub_domain: payload.sub_domain || null,
+        description: payload.description || row.description || '',
+        source_page: payload.source_page || row.source_page || '',
+        source_excerpt: payload.source_excerpt || row.source_excerpt || '',
+        source_pdf_sha256: payload.source_pdf_sha256 || row.source_pdf_sha256 || '',
+        sampling_reason: samplingReason,
+        validation_status: payload.validation_status || 'needs_human_review',
+        review_status: validDecisionStatus(raw.decision_status || payload.review_status),
+        teacher_decision: '',
+        teacher_note: '',
+        staging_id: row.id,
+        import_status: row.import_status || 'pending_review'
+      };
+    }
+
+    function mergeItems(baseItems, incomingItems) {
+      const merged = new Map();
+      baseItems.forEach((item) => merged.set(item.review_id || item.t0_id, item));
+      incomingItems.forEach((item) => {
+        const key = item.review_id || item.t0_id;
+        const current = merged.get(key);
+        merged.set(key, current ? { ...current, ...item } : item);
+      });
+      return [...merged.values()].sort((a, b) => {
+        const levelCompare = String(a.level_id).localeCompare(String(b.level_id));
+        if (levelCompare) return levelCompare;
+        const subjectCompare = String(a.subject_id).localeCompare(String(b.subject_id));
+        if (subjectCompare) return subjectCompare;
+        return String(a.code).localeCompare(String(b.code), 'zh-Hant', { numeric: true });
+      });
+    }
+
+    async function loadSharedStaging() {
+      await requireSession();
+      const { data, error } = await supabaseClient
+        .from('t0_curriculum_staging')
+        .select('*')
+        .order('education_level', { ascending: true })
+        .order('subject', { ascending: true })
+        .order('code', { ascending: true });
+      if (error) throw error;
+      const stagingItems = (data || []).map(stagingRowToItem);
+      state.items = mergeItems(state.items, stagingItems);
+      state.stagingReady = true;
+    }
+
     async function loadSharedDecisions() {
       await requireSession();
       const { data, error } = await supabaseClient
@@ -520,6 +615,7 @@
             subject_id: view.subject_id,
             subject: view.subject,
             code: view.code,
+            source_kind: view.source_kind,
             indicator_type: view.indicator_type,
             domain: view.domain,
             sub_domain: view.sub_domain,
@@ -554,6 +650,24 @@
             state.decisions[row.review_id] = rowToDecision(row);
           }
           localStorage.setItem('t0ReviewDecisions', JSON.stringify(state.decisions));
+          applyFilters({ targetReviewId: state.filtered[state.index]?.review_id });
+        })
+        .subscribe();
+    }
+
+    function subscribeSharedStaging() {
+      if (!supabaseClient || state.stagingChannel) return;
+      state.stagingChannel = supabaseClient
+        .channel('t0-curriculum-staging')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 't0_curriculum_staging' }, (payload) => {
+          const row = payload.new || payload.old;
+          if (!row) return;
+          if (payload.eventType === 'DELETE') {
+            state.items = state.items.filter((item) => item.t0_id !== row.t0_id);
+          } else {
+            state.items = mergeItems(state.items, [stagingRowToItem(row)]);
+          }
+          hydrateFilters();
           applyFilters({ targetReviewId: state.filtered[state.index]?.review_id });
         })
         .subscribe();
@@ -594,18 +708,21 @@
     }
 
     function optionize(select, values) {
+      const selected = select.value;
+      while (select.options.length > 1) select.remove(1);
       values.forEach(value => {
         const option = document.createElement('option');
         option.value = value;
         option.textContent = value;
         select.appendChild(option);
       });
+      select.value = [...select.options].some(option => option.value === selected) ? selected : '';
     }
 
     function hydrateFilters() {
-      optionize(els.levelFilter, [...new Set(state.items.map(item => item.level))]);
-      optionize(els.subjectFilter, [...new Set(state.items.map(item => item.subject))]);
-      optionize(els.reasonFilter, [...new Set(state.items.map(item => item.sampling_reason))]);
+      optionize(els.levelFilter, [...new Set(state.items.map(item => item.level).filter(Boolean))]);
+      optionize(els.subjectFilter, [...new Set(state.items.map(item => item.subject).filter(Boolean))]);
+      optionize(els.reasonFilter, [...new Set(state.items.map(item => item.sampling_reason).filter(Boolean))]);
     }
 
     function applyFilters(options = {}) {
@@ -856,16 +973,19 @@
       const response = await fetch('t0_review_items.json');
       const payload = await response.json();
       state.items = payload.items || [];
+      await loadSharedStaging();
       await loadSharedDecisions();
       state.filtered = [...state.items];
       hydrateFilters();
       updateMetrics();
       render();
       subscribeSharedDecisions();
+      subscribeSharedStaging();
       setInterval(() => {
-        loadSharedDecisions()
+        loadSharedStaging()
+          .then(loadSharedDecisions)
           .then(() => applyFilters({ targetReviewId: state.filtered[state.index]?.review_id }))
-          .catch((error) => console.warn('Shared decision refresh failed', error));
+          .catch((error) => console.warn('Shared T0 refresh failed', error));
       }, 15000);
     }
 
