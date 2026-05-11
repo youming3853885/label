@@ -89,6 +89,7 @@ export function AnnotatorView() {
     question_number: number;
     page_id: string;
     bbox: { x: number; y: number; w: number; h: number };
+    difficulty?: Difficulty | null;
     page_number?: number;
     page_png_path?: string;
     page_width?: number;
@@ -245,7 +246,7 @@ export function AnnotatorView() {
     (async () => {
       const { data } = await supabase()
         .from("annotation_boxes")
-        .select("id, question_number, page_id, bbox, page:annotation_pages(page_number, png_path, width, height)")
+        .select("id, question_number, page_id, bbox, difficulty, page:annotation_pages(page_number, png_path, width, height)")
         .eq("book_id", book.id)
         .eq("type", "question")
         .not("question_number", "is", null)
@@ -257,6 +258,7 @@ export function AnnotatorView() {
           question_number: r.question_number,
           page_id: r.page_id,
           bbox: r.bbox,
+          difficulty: r.difficulty,
           page_number: r.page?.page_number,
           page_png_path: r.page?.png_path,
           page_width: r.page?.width,
@@ -575,6 +577,9 @@ export function AnnotatorView() {
     if (norm.w > 8 && norm.h > 8) saveBox(norm);
   };
 
+  const pageDifficultyStats = questionDifficultyStats(boxes);
+  const bookDifficultyStats = questionDifficultyStats(bookQuestions);
+
   return (
     <main className="min-h-screen bg-paper">
       <div className="border-b border-rule bg-paper">
@@ -805,6 +810,15 @@ export function AnnotatorView() {
 
         {/* Sidebar */}
         <div className="col-span-3 flex flex-col gap-3 text-[13px]">
+          <div className="rounded-md border border-rule-2 bg-[#fffdf8] p-3">
+            <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-3">
+              難度標註進度
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <DifficultyStat label="本頁題目" stats={pageDifficultyStats} />
+              <DifficultyStat label="全書題目" stats={bookDifficultyStats} />
+            </div>
+          </div>
           <SectionTitle>類型 (Q O A S D X E)</SectionTitle>
           <div className="grid grid-cols-2 gap-1.5">
             {(Object.keys(BOX_TYPE_INFO) as BoxType[]).map((t) => (
@@ -1146,6 +1160,58 @@ function QuestionPreview({
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div className="text-[10px] uppercase tracking-wider text-ink-3 mt-1">{children}</div>;
+}
+
+type DifficultyStats = {
+  total: number;
+  tagged: number;
+  easy: number;
+  medium: number;
+  hard: number;
+};
+
+function questionDifficultyStats(
+  rows: Array<{
+    id: string;
+    type?: BoxType;
+    question_number?: number | null;
+    difficulty?: Difficulty | null;
+  }>,
+): DifficultyStats {
+  const byQuestion = new Map<string, Difficulty | null>();
+  for (const row of rows) {
+    if (row.type && row.type !== "question") continue;
+    const key = row.question_number != null ? `q:${row.question_number}` : `id:${row.id}`;
+    const current = byQuestion.get(key) ?? null;
+    byQuestion.set(key, current ?? row.difficulty ?? null);
+  }
+
+  const stats: DifficultyStats = { total: byQuestion.size, tagged: 0, easy: 0, medium: 0, hard: 0 };
+  for (const difficulty of byQuestion.values()) {
+    if (!difficulty) continue;
+    stats.tagged += 1;
+    stats[difficulty] += 1;
+  }
+  return stats;
+}
+
+function DifficultyStat({ label, stats }: { label: string; stats: DifficultyStats }) {
+  return (
+    <div className="rounded-md border border-rule bg-paper p-2">
+      <div className="text-[11px] font-semibold text-ink-3">{label}</div>
+      <div className="mt-1 text-[22px] font-semibold text-ink">
+        {stats.tagged}<span className="text-[12px] text-ink-3"> / {stats.total}</span>
+      </div>
+      <div className="mt-1 text-[10px] leading-5 text-ink-3">
+        已標難度
+      </div>
+      <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-ink-3">
+        <span>簡 {stats.easy}</span>
+        <span>中 {stats.medium}</span>
+        <span>難 {stats.hard}</span>
+      </div>
+    </div>
+  );
 }
 
 function SelectedPanel({
