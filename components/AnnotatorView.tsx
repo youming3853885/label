@@ -581,6 +581,8 @@ export function AnnotatorView() {
     selected?.question_number != null
       ? bookQuestions.find((q) => q.question_number === selected.question_number) ?? null
       : null;
+  const crossPagePairingQ =
+    selected?.question_number ?? pairingQNum ?? currentQInPass ?? null;
 
   return (
     <main className="min-h-screen bg-paper">
@@ -840,6 +842,21 @@ export function AnnotatorView() {
               </button>
             ))}
           </div>
+
+          {crossPagePairingQ != null && (
+            <button
+              onClick={() =>
+                window.open(
+                  `/book/${book.id}/pairing?q=${crossPagePairingQ}&page=${page.id}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }
+              className="h-9 rounded-md border border-accent bg-accent/10 text-[12px] font-semibold text-accent hover:bg-accent/15"
+            >
+              開新分頁配對 Q{crossPagePairingQ}
+            </button>
+          )}
 
           <SectionTitle>模式 (Tab 切換)</SectionTitle>
           <div className="flex gap-1.5">
