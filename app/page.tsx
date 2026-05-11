@@ -389,21 +389,35 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const loadRows = useCallback(async () => {
     setLoading(true);
     setError(null);
-    let query = supabase()
-      .from("v_upad12_teacher_review_queue")
-      .select("*")
-      .order("confidence", { ascending: false })
-      .limit(3000);
+    const pageSize = 1000;
+    const allRows: Upad12ReviewRow[] = [];
+    let loadError: Error | null = null;
 
-    if (source !== "all") query = query.eq("source_area", source);
-    if (status !== "all") query = query.eq("teacher_review_status", status);
+    for (let from = 0; from < 10000; from += pageSize) {
+      let query = supabase()
+        .from("v_upad12_teacher_review_queue")
+        .select("*")
+        .order("confidence", { ascending: false })
+        .range(from, from + pageSize - 1);
 
-    const { data, error: loadError } = await query;
+      if (source !== "all") query = query.eq("source_area", source);
+      if (status !== "all") query = query.eq("teacher_review_status", status);
+
+      const { data, error: pageError } = await query;
+      if (pageError) {
+        loadError = pageError;
+        break;
+      }
+
+      allRows.push(...((data ?? []) as Upad12ReviewRow[]));
+      if ((data ?? []).length < pageSize) break;
+    }
+
     if (loadError) {
       setError(loadError.message);
       setRows([]);
     } else {
-      setRows((data ?? []) as Upad12ReviewRow[]);
+      setRows(allRows);
     }
     setLoading(false);
   }, [source, status]);
