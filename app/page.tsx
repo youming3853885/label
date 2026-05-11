@@ -35,6 +35,7 @@ const T0_REVIEW_URL =
 
 const SHARED_EMAIL = "annotator@label.local";
 const REVIEWER_STORAGE_KEY = "label.upad12.reviewerName";
+const REVIEW_PAGE_SIZE = 120;
 
 const tabs = [
   {
@@ -380,6 +381,8 @@ function T0ReviewTab() {
 function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [rows, setRows] = useState<Upad12ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [serverTotal, setServerTotal] = useState<number | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<SourceFilter>("all");
@@ -401,40 +404,34 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
     }
   }, [reviewerName]);
 
-  const loadRows = useCallback(async () => {
-    setLoading(true);
+  const loadRows = useCallback(async (append = false, offset = 0) => {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError(null);
-    const pageSize = 1000;
-    const allRows: Upad12ReviewRow[] = [];
-    let loadError: Error | null = null;
 
-    for (let from = 0; from < 50000; from += pageSize) {
-      let query = supabase()
-        .from("v_upad12_teacher_review_queue")
-        .select("*")
-        .order("confidence", { ascending: false })
-        .range(from, from + pageSize - 1);
+    const from = append ? offset : 0;
+    let query = supabase()
+      .from("v_upad12_teacher_review_queue")
+      .select("*", { count: append ? undefined : "planned" })
+      .order("confidence", { ascending: false })
+      .range(from, from + REVIEW_PAGE_SIZE - 1);
 
-      if (source !== "all") query = query.eq("source_area", source);
+    if (source !== "all") query = query.eq("source_area", source);
+    if (status !== "all") query = query.eq("teacher_review_status", status);
 
-      const { data, error: pageError } = await query;
-      if (pageError) {
-        loadError = pageError;
-        break;
-      }
-
-      allRows.push(...((data ?? []) as Upad12ReviewRow[]));
-      if ((data ?? []).length < pageSize) break;
-    }
+    const { data, count, error: loadError } = await query;
 
     if (loadError) {
       setError(loadError.message);
-      setRows([]);
+      if (!append) setRows([]);
     } else {
-      setRows(allRows);
+      const nextRows = (data ?? []) as Upad12ReviewRow[];
+      setRows((current) => (append ? [...current, ...nextRows] : nextRows));
+      if (!append) setServerTotal(count ?? null);
     }
-    setLoading(false);
-  }, [source]);
+    if (append) setLoadingMore(false);
+    else setLoading(false);
+  }, [source, status]);
 
   useEffect(() => {
     void loadRows();
@@ -446,7 +443,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "upad12_teacher_review_decisions" },
-        () => void loadRows(),
+        () => void loadRows(false),
       )
       .subscribe();
     return () => {
@@ -500,7 +497,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const currentRow = filteredRows[currentIndex] ?? null;
 
   const summary = useMemo(() => {
-    return rows.reduce(
+    const base = rows.reduce(
       (acc, row) => {
         const rowLevel = inferLevel(row);
         const rowSubject = inferSubject(row);
@@ -542,7 +539,9 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         } as Record<SubjectFilter, number>,
       },
     );
-  }, [level, rows, subject]);
+    base.total = serverTotal ?? base.total;
+    return base;
+  }, [level, rows, serverTotal, subject]);
 
   const decide = async (row: Upad12ReviewRow, decision: Decision) => {
     setSavingId(row.id);
@@ -573,7 +572,23 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
     if (saveError) {
       setError(saveError.message);
     } else {
-      await loadRows();
+      const nextStatus = decision === "approved" ? "approved" : decision === "rejected" ? "rejected" : "revised";
+      setRows((current) =>
+        current.map((item) =>
+          item.id === row.id
+            ? {
+                ...item,
+                teacher_review_status: nextStatus,
+                approved_count: decision === "approved" ? Math.max(1, item.approved_count) : item.approved_count,
+                rejected_count: decision === "rejected" ? Math.max(1, item.rejected_count) : item.rejected_count,
+                revised_count: decision === "revised" ? Math.max(1, item.revised_count) : item.revised_count,
+                review_count: Math.max(1, item.review_count),
+                last_reviewed_at: new Date().toISOString(),
+              }
+            : item,
+        ),
+      );
+      setCurrentIndex((index) => Math.min(index, Math.max(0, filteredRows.length - 2)));
     }
     setSavingId(null);
   };
@@ -665,7 +680,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
               />
             </label>
             <button
-              onClick={() => void loadRows()}
+              onClick={() => void loadRows(false)}
               className="h-10 w-full rounded-md border border-ink bg-ink px-4 text-[14px] font-semibold text-paper"
             >
               同步整理
@@ -684,7 +699,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
             </div>
           )}
 
-          {loading && <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">載入知識點審核清單...</div>}
+          {loading && <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">載入第一批知識點審核清單...</div>}
           {!loading && !currentRow && (
             <div className="rounded-md border border-rule bg-paper p-5 text-ink-3">目前沒有符合條件的知識點。</div>
           )}
@@ -701,6 +716,20 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
               onNoteChange={(value) => setNotes((prev) => ({ ...prev, [currentRow.id]: value }))}
               onDecision={(decision) => void decide(currentRow, decision)}
             />
+          )}
+          {!loading && rows.length < (serverTotal ?? rows.length) && (
+            <div className="mt-3 rounded-md border border-rule bg-paper p-3 text-center">
+              <button
+                onClick={() => void loadRows(true, rows.length)}
+                disabled={loadingMore}
+                className="h-10 rounded-md border border-rule-2 bg-white px-5 text-[13px] font-semibold text-ink-2 disabled:opacity-50"
+              >
+                {loadingMore ? "載入中..." : `再載入 ${Math.min(REVIEW_PAGE_SIZE, (serverTotal ?? rows.length) - rows.length)} 筆`}
+              </button>
+              <span className="ml-3 text-[12px] text-ink-3">
+                已載入 {rows.length} / {serverTotal ?? rows.length}
+              </span>
+            </div>
           )}
         </section>
       </div>
