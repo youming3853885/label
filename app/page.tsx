@@ -383,6 +383,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [serverTotal, setServerTotal] = useState<number | null>(null);
+  const [hasMoreRows, setHasMoreRows] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<SourceFilter>("all");
@@ -428,6 +429,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       const nextRows = (data ?? []) as Upad12ReviewRow[];
       setRows((current) => (append ? [...current, ...nextRows] : nextRows));
       if (!append) setServerTotal(count ?? null);
+      setHasMoreRows(nextRows.length === REVIEW_PAGE_SIZE);
     }
     if (append) setLoadingMore(false);
     else setLoading(false);
@@ -539,7 +541,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         } as Record<SubjectFilter, number>,
       },
     );
-    base.total = serverTotal ?? base.total;
+    base.total = Math.max(serverTotal ?? 0, rows.length, base.total);
     return base;
   }, [level, rows, serverTotal, subject]);
 
@@ -717,17 +719,17 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
               onDecision={(decision) => void decide(currentRow, decision)}
             />
           )}
-          {!loading && rows.length < (serverTotal ?? rows.length) && (
+          {!loading && hasMoreRows && (
             <div className="mt-3 rounded-md border border-rule bg-paper p-3 text-center">
               <button
                 onClick={() => void loadRows(true, rows.length)}
                 disabled={loadingMore}
                 className="h-10 rounded-md border border-rule-2 bg-white px-5 text-[13px] font-semibold text-ink-2 disabled:opacity-50"
               >
-                {loadingMore ? "載入中..." : `再載入 ${Math.min(REVIEW_PAGE_SIZE, (serverTotal ?? rows.length) - rows.length)} 筆`}
+                {loadingMore ? "載入中..." : `再載入 ${REVIEW_PAGE_SIZE} 筆`}
               </button>
               <span className="ml-3 text-[12px] text-ink-3">
-                已載入 {rows.length} / {serverTotal ?? rows.length}
+                已載入 {rows.length} 筆{serverTotal && serverTotal > rows.length ? ` / 約 ${serverTotal} 筆` : ""}
               </span>
             </div>
           )}
