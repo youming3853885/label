@@ -35,7 +35,7 @@ const T0_REVIEW_URL =
 
 const SHARED_EMAIL = "annotator@label.local";
 const REVIEWER_STORAGE_KEY = "label.upad12.reviewerName";
-const REVIEW_PAGE_SIZE = 120;
+const REVIEW_PAGE_SIZE = 1000;
 
 const tabs = [
   {
@@ -382,6 +382,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [rows, setRows] = useState<Upad12ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadingAll, setLoadingAll] = useState(false);
   const [serverTotal, setServerTotal] = useState<number | null>(null);
   const [hasMoreRows, setHasMoreRows] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -394,6 +395,8 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [search, setSearch] = useState("");
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [reviewerName, setReviewerName] = useState("");
+  const loadRunRef = useRef(0);
+  const autoLoadKeyRef = useRef("");
 
   useEffect(() => {
     setReviewerName(localStorage.getItem(REVIEWER_STORAGE_KEY) ?? "");
@@ -409,6 +412,11 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
     if (append) setLoadingMore(true);
     else setLoading(true);
     setError(null);
+    const runId = append ? loadRunRef.current : loadRunRef.current + 1;
+    if (!append) {
+      loadRunRef.current = runId;
+      autoLoadKeyRef.current = "";
+    }
 
     const from = append ? offset : 0;
     let query = supabase()
@@ -421,6 +429,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
     if (status !== "all") query = query.eq("teacher_review_status", status);
 
     const { data, count, error: loadError } = await query;
+    if (runId !== loadRunRef.current) return;
 
     if (loadError) {
       setError(loadError.message);
@@ -435,9 +444,67 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
     else setLoading(false);
   }, [source, status]);
 
+  const loadRemainingRows = useCallback(async (offset: number) => {
+    if (loadingAll) return;
+    setLoadingAll(true);
+    setError(null);
+    const runId = loadRunRef.current;
+    let nextOffset = offset;
+    let more = true;
+
+    while (more && runId === loadRunRef.current) {
+      let query = supabase()
+        .from("v_upad12_teacher_review_queue")
+        .select("*")
+        .order("confidence", { ascending: false })
+        .range(nextOffset, nextOffset + REVIEW_PAGE_SIZE - 1);
+
+      if (source !== "all") query = query.eq("source_area", source);
+      if (status !== "all") query = query.eq("teacher_review_status", status);
+
+      const { data, error: loadError } = await query;
+      if (runId !== loadRunRef.current) break;
+
+      if (loadError) {
+        setError(loadError.message);
+        break;
+      }
+
+      const nextRows = (data ?? []) as Upad12ReviewRow[];
+      if (nextRows.length === 0) {
+        more = false;
+        setHasMoreRows(false);
+        break;
+      }
+
+      setRows((current) => {
+        const seen = new Set(current.map((row) => row.id));
+        return [...current, ...nextRows.filter((row) => !seen.has(row.id))];
+      });
+      nextOffset += nextRows.length;
+      more = nextRows.length === REVIEW_PAGE_SIZE;
+      setHasMoreRows(more);
+
+      await new Promise((resolve) => window.setTimeout(resolve, 80));
+    }
+
+    if (runId === loadRunRef.current) setLoadingAll(false);
+  }, [loadingAll, source, status]);
+
   useEffect(() => {
     void loadRows();
   }, [loadRows]);
+
+  useEffect(() => {
+    if (loading || loadingAll || !hasMoreRows || rows.length === 0) return;
+    const key = `${source}:${status}`;
+    if (autoLoadKeyRef.current === key) return;
+    autoLoadKeyRef.current = key;
+    const timer = window.setTimeout(() => {
+      void loadRemainingRows(rows.length);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [hasMoreRows, loading, loadingAll, loadRemainingRows, rows.length, source, status]);
 
   useEffect(() => {
     const channel = supabase()
@@ -723,14 +790,19 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
             <div className="mt-3 rounded-md border border-rule bg-paper p-3 text-center">
               <button
                 onClick={() => void loadRows(true, rows.length)}
-                disabled={loadingMore}
+                disabled={loadingMore || loadingAll}
                 className="h-10 rounded-md border border-rule-2 bg-white px-5 text-[13px] font-semibold text-ink-2 disabled:opacity-50"
               >
-                {loadingMore ? "載入中..." : `再載入 ${REVIEW_PAGE_SIZE} 筆`}
+                {loadingAll ? "背景補齊中..." : loadingMore ? "載入中..." : `再載入 ${REVIEW_PAGE_SIZE} 筆`}
               </button>
               <span className="ml-3 text-[12px] text-ink-3">
                 已載入 {rows.length} 筆{serverTotal && serverTotal > rows.length ? ` / 約 ${serverTotal} 筆` : ""}
               </span>
+            </div>
+          )}
+          {!loading && loadingAll && (
+            <div className="mt-3 rounded-md border border-rule bg-paper/85 p-3 text-center text-[12px] text-ink-3">
+              背景載入全部審核清單中，目前已載入 {rows.length} 筆。你可以先繼續審核，不用等待。
             </div>
           )}
         </section>
