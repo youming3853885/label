@@ -384,6 +384,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
   const [serverTotal, setServerTotal] = useState<number | null>(null);
+  const [globalReviewedTotal, setGlobalReviewedTotal] = useState<number | null>(null);
   const [hasMoreRows, setHasMoreRows] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -407,6 +408,16 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       localStorage.setItem(REVIEWER_STORAGE_KEY, reviewerName.trim());
     }
   }, [reviewerName]);
+
+  const loadGlobalReviewedTotal = useCallback(async () => {
+    const { count, error: countError } = await supabase()
+      .from("v_upad12_teacher_review_queue")
+      .select("id", { count: "exact", head: true })
+      .neq("teacher_review_status", "pending");
+    if (!countError) {
+      setGlobalReviewedTotal(count ?? 0);
+    }
+  }, []);
 
   const loadRows = useCallback(async (append = false, offset = 0) => {
     if (append) setLoadingMore(true);
@@ -493,7 +504,8 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
 
   useEffect(() => {
     void loadRows();
-  }, [loadRows]);
+    void loadGlobalReviewedTotal();
+  }, [loadRows, loadGlobalReviewedTotal]);
 
   useEffect(() => {
     if (loading || loadingAll || !hasMoreRows || rows.length === 0) return;
@@ -512,13 +524,16 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "upad12_teacher_review_decisions" },
-        () => void loadRows(false),
+        () => {
+          void loadRows(false);
+          void loadGlobalReviewedTotal();
+        },
       )
       .subscribe();
     return () => {
       void supabase().removeChannel(channel);
     };
-  }, [loadRows]);
+  }, [loadRows, loadGlobalReviewedTotal]);
 
   const filteredRows = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -642,6 +657,9 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       setError(saveError.message);
     } else {
       const nextStatus = decision === "approved" ? "approved" : decision === "rejected" ? "rejected" : "revised";
+      if (row.teacher_review_status === "pending") {
+        setGlobalReviewedTotal((count) => (count == null ? count : count + 1));
+      }
       setRows((current) =>
         current.map((item) =>
           item.id === row.id
@@ -668,7 +686,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
         <aside className="rounded-md border border-rule bg-paper/95 p-3 shadow-[0_12px_34px_rgba(28,37,34,.06)]">
           <div className="grid grid-cols-2 gap-2">
             <StatCard label="知識點" value={summary.total} />
-            <StatCard label="已審查" value={summary.approved + summary.rejected + summary.revised} tone="good" />
+            <StatCard label="已審查" value={globalReviewedTotal ?? summary.approved + summary.rejected + summary.revised} tone="good" />
             <StatCard label="本清單" value={filteredRows.length} tone="warn" />
             <StatCard label="目前筆" value={filteredRows.length ? currentIndex + 1 : 0} />
           </div>
