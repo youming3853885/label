@@ -8,6 +8,7 @@ import type Konva from "konva";
 import { supabase } from "@/lib/supabase";
 
 const BUCKET = "annotation-source";
+const DEFAULT_OPTION_LETTER = "ABCD";
 import {
   Box, BoxType, Difficulty, Page, Book,
   BOX_TYPE_INFO, DIFFICULTY_LABEL,
@@ -110,13 +111,16 @@ export function AnnotatorView() {
   // Companion sticky for 題組 sub_number (e.g., Q6 sub=2 means 「第 6 題的
   // 第 (2) 小題」). Same persistence pattern.
   const [currentSubInPass, setCurrentSubInPass] = useState<number | null>(null);
+  const [lastOptionLetter, setLastOptionLetter] = useState(DEFAULT_OPTION_LETTER);
   // Hydrate Q + sub stickies from localStorage when book loads.
   useEffect(() => {
     if (typeof window === "undefined" || !params.id) return;
     const q = localStorage.getItem(`label.stickyQ.${params.id}`);
     const s = localStorage.getItem(`label.stickySub.${params.id}`);
+    const optionLetter = localStorage.getItem(`label.stickyOptionLetter.${params.id}`);
     setCurrentQInPass(q ? Number(q) : null);
     setCurrentSubInPass(s ? Number(s) : null);
+    setLastOptionLetter(optionLetter || DEFAULT_OPTION_LETTER);
   }, [params.id]);
   // Persist whenever they change.
   useEffect(() => {
@@ -135,6 +139,10 @@ export function AnnotatorView() {
       localStorage.setItem(`label.stickySub.${params.id}`, String(currentSubInPass));
     }
   }, [params.id, currentSubInPass]);
+  useEffect(() => {
+    if (typeof window === "undefined" || !params.id) return;
+    localStorage.setItem(`label.stickyOptionLetter.${params.id}`, lastOptionLetter || DEFAULT_OPTION_LETTER);
+  }, [params.id, lastOptionLetter]);
 
   useEffect(() => {
     if (!annotatorName) return;
@@ -392,6 +400,7 @@ export function AnnotatorView() {
           bbox,
           question_number: qnum,
           sub_number: snum,
+          option_letter: activeType === "option" ? (lastOptionLetter || DEFAULT_OPTION_LETTER) : null,
           annotator_name: annotatorName,
           created_by,
           source: "human",
@@ -414,7 +423,7 @@ export function AnnotatorView() {
         advancePairingQ(1);
       }
     },
-    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, nextUnitTitleNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass, boxes, userId],
+    [page, book, annotatorName, activeType, pendingNumber, nextQuestionNumber, nextUnitTitleNumber, pass, pairingQNum, autoAdvance, advancePairingQ, currentQInPass, currentSubInPass, boxes, userId, lastOptionLetter],
   );
 
   // Patch (update) an existing box — used for difficulty / qnum / option_letter
@@ -433,6 +442,11 @@ export function AnnotatorView() {
     setBoxes((bs) => bs.map((b) => (b.id === id ? (data as Box) : b)));
     if (selected?.id === id) setSelected(data as Box);
   }, [selected]);
+
+  useEffect(() => {
+    if (selected?.type !== "option" || selected.option_letter) return;
+    void patchBox(selected.id, { option_letter: lastOptionLetter || DEFAULT_OPTION_LETTER });
+  }, [selected?.id, selected?.type, selected?.option_letter, lastOptionLetter, patchBox]);
 
   const deleteBox = useCallback(async (id: string) => {
     const sb = supabase();
@@ -1084,6 +1098,8 @@ export function AnnotatorView() {
               box={selected}
               linkedQuestion={selectedLinkedQuestion}
               onPatch={patchBox}
+              lastOptionLetter={lastOptionLetter}
+              onOptionLetterChange={setLastOptionLetter}
               onDelete={() => deleteBox(selected.id)}
             />
           )}
@@ -1248,11 +1264,13 @@ function DifficultyStat({ label, stats }: { label: string; stats: DifficultyStat
 }
 
 function SelectedPanel({
-  box, linkedQuestion, onPatch, onDelete,
+  box, linkedQuestion, onPatch, lastOptionLetter, onOptionLetterChange, onDelete,
 }: {
   box: Box;
   linkedQuestion: { id: string; question_number: number; difficulty?: Difficulty | null } | null;
   onPatch: (id: string, patch: Partial<Box>) => void;
+  lastOptionLetter: string;
+  onOptionLetterChange: (value: string) => void;
   onDelete: () => void;
 }) {
   const canGuideDifficulty = box.type === "answer";
@@ -1338,8 +1356,12 @@ function SelectedPanel({
             </span>
           </label>
           <select
-            value={box.option_letter ?? ""}
-            onChange={(e) => onPatch(box.id, { option_letter: e.target.value || null })}
+            value={box.option_letter ?? lastOptionLetter ?? DEFAULT_OPTION_LETTER}
+            onChange={(e) => {
+              const value = e.target.value || DEFAULT_OPTION_LETTER;
+              onOptionLetterChange(value);
+              onPatch(box.id, { option_letter: value });
+            }}
             className="w-full h-8 px-2 rounded border border-rule-2 text-[13px]"
           >
             <option value="">—</option>
