@@ -512,7 +512,7 @@ export function AnnotatorView() {
     const onKey = (e: KeyboardEvent) => {
       // Letter shortcuts to set type
       const map: Record<string, BoxType> = {
-        q: "question", o: "option", a: "answer",
+        q: "question", w: "option", a: "answer",
         s: "solution", d: "figure", x: "skip", e: "unit_title",
       };
       if (e.key.toLowerCase() in map) {
@@ -875,7 +875,7 @@ export function AnnotatorView() {
               <DifficultyStat label="全書題目" stats={bookDifficultyStats} />
             </div>
           </div>
-          <SectionTitle>類型 (Q O A S D X E)</SectionTitle>
+          <SectionTitle>類型 (Q W A S D X E)</SectionTitle>
           <div className="grid grid-cols-2 gap-1.5">
             {(Object.keys(BOX_TYPE_INFO) as BoxType[]).map((t) => (
               <button
