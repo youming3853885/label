@@ -1356,7 +1356,7 @@ function SelectedPanel({
             </span>
           </label>
           <select
-            value={box.option_letter ?? lastOptionLetter ?? DEFAULT_OPTION_LETTER}
+            value={box.option_letter || lastOptionLetter || DEFAULT_OPTION_LETTER}
             onChange={(e) => {
               const value = e.target.value || DEFAULT_OPTION_LETTER;
               onOptionLetterChange(value);
@@ -1364,7 +1364,6 @@ function SelectedPanel({
             }}
             className="w-full h-8 px-2 rounded border border-rule-2 text-[13px]"
           >
-            <option value="">—</option>
             <optgroup label="單個選項">
               {["A","B","C","D","E","F"].map((k) => (
                 <option key={k} value={k}>{k}</option>
