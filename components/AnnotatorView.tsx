@@ -286,7 +286,8 @@ export function AnnotatorView() {
         .eq("book_id", book.id)
         .eq("type", "question")
         .not("question_number", "is", null)
-        .order("question_number");
+        .order("question_number")
+        .order("id", { ascending: true }); // deterministic tie-break when duplicate stems exist
       if (cancelled) return;
       const flat: BookQ[] = ((data as any[]) ?? [])
         .map((r) => ({
@@ -439,8 +440,14 @@ export function AnnotatorView() {
       alert(`更新失敗：${error.message}`);
       return;
     }
-    setBoxes((bs) => bs.map((b) => (b.id === id ? (data as Box) : b)));
-    if (selected?.id === id) setSelected(data as Box);
+    const updated = data as Box;
+    setBoxes((bs) => bs.map((b) => (b.id === id ? updated : b)));
+    if (selected?.id === id) setSelected(updated);
+    // Keep bookQuestions in sync when patching a question box from another page
+    // (boxes only holds current-page boxes, so bookQuestions would otherwise stay stale)
+    if ("difficulty" in patch) {
+      setBookQuestions((bqs) => bqs.map((q) => q.id === id ? { ...q, difficulty: updated.difficulty } : q));
+    }
   }, [selected]);
 
   useEffect(() => {
@@ -615,6 +622,14 @@ export function AnnotatorView() {
     if (norm.w > 8 && norm.h > 8) saveBox(norm);
   };
 
+  const stemDiffByQNum = useMemo(() => {
+    const m = new Map<number, Difficulty | null>();
+    for (const q of bookQuestions) {
+      if (!m.has(q.question_number)) m.set(q.question_number, q.difficulty ?? null);
+    }
+    return m;
+  }, [bookQuestions]);
+
   const pageDifficultyStats = questionDifficultyStats(boxes);
   const bookDifficultyStats = questionDifficultyStats(bookQuestions);
   const selectedLinkedQuestion =
@@ -781,12 +796,17 @@ export function AnnotatorView() {
                         <Text
                           x={b.bbox.x + 4}
                           y={b.bbox.y + 4}
-                          text={
-                            (BOX_TYPE_INFO[b.type].label) +
-                            (b.question_number != null ? ` Q${b.question_number}` : "") +
-                            (b.option_letter ? ` (${b.option_letter})` : "") +
-                            (b.difficulty ? ` ${DIFFICULTY_LABEL[b.difficulty]}` : "")
-                          }
+                          text={(() => {
+                            const d = b.question_number != null
+                              ? stemDiffByQNum.get(b.question_number) ?? null
+                              : b.difficulty;
+                            return (
+                              BOX_TYPE_INFO[b.type].label +
+                              (b.question_number != null ? ` Q${b.question_number}` : "") +
+                              (b.option_letter ? ` (${b.option_letter})` : "") +
+                              (d ? ` ${DIFFICULTY_LABEL[d]}` : "")
+                            );
+                          })()}
                           fontSize={14}
                           fontStyle="bold"
                           fill={color}

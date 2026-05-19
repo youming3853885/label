@@ -65,7 +65,8 @@ export function CrossPagePairingView() {
       .from("annotation_boxes")
       .select("*, page:annotation_pages(page_number, png_path, width, height)")
       .eq("book_id", params.id)
-      .order("question_number", { ascending: true });
+      .order("question_number", { ascending: true })
+      .order("id", { ascending: true }); // deterministic tie-break when duplicate stems exist
     setAllBoxes(((data as BookBox[]) ?? []));
   }, [params.id]);
 
@@ -143,6 +144,14 @@ export function CrossPagePairingView() {
     () => allBoxes.filter((b) => b.question_number === targetQ),
     [allBoxes, targetQ],
   );
+
+  const stemDiffByQNum = useMemo(() => {
+    const m = new Map<number, Difficulty | null>();
+    for (const q of questions) {
+      m.set(q.question_number, q.difficulty ?? null);
+    }
+    return m;
+  }, [questions]);
 
   const targetStatus = useMemo(() => {
     const count = (type: BoxType) => targetBoxes.filter((b) => b.type === type).length;
@@ -557,7 +566,12 @@ export function CrossPagePairingView() {
                         <Text
                           x={b.bbox.x + 4}
                           y={b.bbox.y + 4}
-                          text={`${BOX_TYPE_INFO[b.type].label}${b.question_number != null ? ` Q${b.question_number}` : ""}${b.difficulty ? ` ${DIFFICULTY_LABEL[b.difficulty]}` : ""}`}
+                          text={(() => {
+                            const d = b.question_number != null
+                              ? stemDiffByQNum.get(b.question_number) ?? null
+                              : b.difficulty;
+                            return `${BOX_TYPE_INFO[b.type].label}${b.question_number != null ? ` Q${b.question_number}` : ""}${d ? ` ${DIFFICULTY_LABEL[d]}` : ""}`;
+                          })()}
                           fontSize={14}
                           fontStyle="bold"
                           fill={color}
