@@ -108,15 +108,21 @@ export function CrossPagePairingView() {
   }, [pages, currentPageId]);
 
   const questions = useMemo<QuestionBox[]>(() => {
-    const seen = new Set<number>();
-    return allBoxes
-      .filter((b): b is QuestionBox => b.type === "question" && b.question_number != null)
-      .filter((q) => {
-        if (seen.has(q.question_number)) return false;
-        seen.add(q.question_number);
-        return true;
-      })
-      .sort((a, b) => a.question_number - b.question_number);
+    // Dedup by question_number. When a stem is re-drawn the duplicate is
+    // often left without a difficulty, so keep the first box but adopt a
+    // difficulty from whichever duplicate has one set.
+    const byNum = new Map<number, QuestionBox>();
+    for (const b of allBoxes) {
+      if (b.type !== "question" || b.question_number == null) continue;
+      const q = b as QuestionBox;
+      const existing = byNum.get(q.question_number);
+      if (!existing) {
+        byNum.set(q.question_number, q);
+      } else if (!existing.difficulty && q.difficulty) {
+        byNum.set(q.question_number, { ...existing, difficulty: q.difficulty });
+      }
+    }
+    return [...byNum.values()].sort((a, b) => a.question_number - b.question_number);
   }, [allBoxes]);
 
   useEffect(() => {

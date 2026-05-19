@@ -301,15 +301,20 @@ export function AnnotatorView() {
           page_width: r.page?.width,
           page_height: r.page?.height,
         }));
-      // Dedup by question_number — same number can appear on multiple pages
-      // if user accidentally created duplicates; keep the first.
-      const seen = new Set<number>();
-      const unique = flat.filter((q) => {
-        if (seen.has(q.question_number)) return false;
-        seen.add(q.question_number);
-        return true;
-      });
-      setBookQuestions(unique);
+      // Dedup by question_number. Duplicates happen when a stem is re-drawn;
+      // keep the first box but adopt a difficulty from whichever duplicate
+      // has one set — difficulty is authored on the stem and re-drawn copies
+      // are often left blank.
+      const byNum = new Map<number, BookQ>();
+      for (const q of flat) {
+        const existing = byNum.get(q.question_number);
+        if (!existing) {
+          byNum.set(q.question_number, q);
+        } else if (!existing.difficulty && q.difficulty) {
+          byNum.set(q.question_number, { ...existing, difficulty: q.difficulty });
+        }
+      }
+      setBookQuestions([...byNum.values()]);
     })();
     return () => {
       cancelled = true;
