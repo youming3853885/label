@@ -61,13 +61,25 @@ export function CrossPagePairingView() {
   const rectRefs = useRef<Map<string, Konva.Rect>>(new Map());
 
   const loadAllBoxes = useCallback(async () => {
-    const { data } = await supabase()
-      .from("annotation_boxes")
-      .select("*, page:annotation_pages(page_number, png_path, width, height)")
-      .eq("book_id", params.id)
-      .order("question_number", { ascending: true })
-      .order("id", { ascending: true }); // deterministic tie-break when duplicate stems exist
-    setAllBoxes(((data as BookBox[]) ?? []));
+    // Paginate — PostgREST caps a single response at 1000 rows, and big
+    // books have more boxes than that (the question list would otherwise
+    // be silently truncated).
+    const sb = supabase();
+    const PAGE = 1000;
+    const all: BookBox[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await sb
+        .from("annotation_boxes")
+        .select("*, page:annotation_pages(page_number, png_path, width, height)")
+        .eq("book_id", params.id)
+        .order("question_number", { ascending: true })
+        .order("id", { ascending: true }) // deterministic tie-break when duplicate stems exist
+        .range(from, from + PAGE - 1);
+      const chunk = (data as BookBox[]) ?? [];
+      all.push(...chunk);
+      if (chunk.length < PAGE) break;
+    }
+    setAllBoxes(all);
   }, [params.id]);
 
   useEffect(() => {
@@ -283,6 +295,37 @@ export function CrossPagePairingView() {
     setAllBoxes((bs) => bs.filter((b) => b.id !== id));
     if (selected?.id === id) setSelected(null);
   }, [selected]);
+
+  // Keyboard shortcuts — mirror the main annotator. W/A/S/D pick the box
+  // type for the next-drawn pairing box; Delete removes the selected box.
+  useEffect(() => {
+    if (!annotatorName) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")) {
+        return;
+      }
+      const typeMap: Record<string, BoxType> = {
+        w: "option", a: "answer", s: "solution", d: "figure",
+      };
+      const k = e.key.toLowerCase();
+      if (k in typeMap) {
+        setActiveType(typeMap[k]);
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+        e.preventDefault();
+        deleteBox(selected.id);
+        return;
+      }
+      if (e.key === "Escape") {
+        setSelected(null);
+        return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [annotatorName, selected, deleteBox]);
 
   const saveBox = useCallback(async (bbox: { x: number; y: number; w: number; h: number }) => {
     if (!book || !page || !annotatorName || targetQ == null) return;
@@ -639,6 +682,7 @@ export function CrossPagePairingView() {
                   style={activeType === t ? { backgroundColor: BOX_TYPE_INFO[t].color, borderColor: BOX_TYPE_INFO[t].color } : undefined}
                 >
                   {BOX_TYPE_INFO[t].label}
+                  <span className="ml-1 text-[10px] opacity-60">{BOX_TYPE_INFO[t].key}</span>
                 </button>
               ))}
             </div>
