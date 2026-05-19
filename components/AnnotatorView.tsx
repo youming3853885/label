@@ -584,6 +584,14 @@ export function AnnotatorView() {
     tr.getLayer()?.batchDraw();
   }, [selected, boxes]);
 
+  const stemDiffByQNum = useMemo(() => {
+    const m = new Map<number, Difficulty | null>();
+    for (const q of bookQuestions) {
+      if (!m.has(q.question_number)) m.set(q.question_number, q.difficulty ?? null);
+    }
+    return m;
+  }, [bookQuestions]);
+
   if (!annotatorName) return <NameModal onReady={setReady} />;
   if (!book || !page) return <div className="p-10 text-ink-3">載入中…</div>;
 
@@ -621,14 +629,6 @@ export function AnnotatorView() {
     setDrawing(null);
     if (norm.w > 8 && norm.h > 8) saveBox(norm);
   };
-
-  const stemDiffByQNum = useMemo(() => {
-    const m = new Map<number, Difficulty | null>();
-    for (const q of bookQuestions) {
-      if (!m.has(q.question_number)) m.set(q.question_number, q.difficulty ?? null);
-    }
-    return m;
-  }, [bookQuestions]);
 
   const pageDifficultyStats = questionDifficultyStats(boxes);
   const bookDifficultyStats = questionDifficultyStats(bookQuestions);
