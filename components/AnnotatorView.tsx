@@ -637,10 +637,6 @@ export function AnnotatorView() {
 
   const pageDifficultyStats = questionDifficultyStats(boxes);
   const bookDifficultyStats = questionDifficultyStats(bookQuestions);
-  const selectedLinkedQuestion =
-    selected?.question_number != null
-      ? bookQuestions.find((q) => q.question_number === selected.question_number) ?? null
-      : null;
   const crossPagePairingQ =
     selected?.question_number ?? pairingQNum ?? currentQInPass ?? null;
 
@@ -1121,7 +1117,6 @@ export function AnnotatorView() {
           {selected && (
             <SelectedPanel
               box={selected}
-              linkedQuestion={selectedLinkedQuestion}
               onPatch={patchBox}
               lastOptionLetter={lastOptionLetter}
               onOptionLetterChange={setLastOptionLetter}
@@ -1289,19 +1284,14 @@ function DifficultyStat({ label, stats }: { label: string; stats: DifficultyStat
 }
 
 function SelectedPanel({
-  box, linkedQuestion, onPatch, lastOptionLetter, onOptionLetterChange, onDelete,
+  box, onPatch, lastOptionLetter, onOptionLetterChange, onDelete,
 }: {
   box: Box;
-  linkedQuestion: { id: string; question_number: number; difficulty?: Difficulty | null } | null;
   onPatch: (id: string, patch: Partial<Box>) => void;
   lastOptionLetter: string;
   onOptionLetterChange: (value: string) => void;
   onDelete: () => void;
 }) {
-  const canGuideDifficulty = box.type === "answer";
-  const needsDifficultyGuide =
-    canGuideDifficulty && box.question_number != null && !!linkedQuestion;
-
   return (
     <div className="border border-rule-2 rounded p-3 space-y-2 bg-rule/20">
       <div className="text-[10px] uppercase tracking-wider text-ink-3">已選 {BOX_TYPE_INFO[box.type].label}</div>
@@ -1339,19 +1329,19 @@ function SelectedPanel({
         </div>
       )}
 
-      {needsDifficultyGuide && linkedQuestion && (
+      {box.type === "question" && (
         <div className="rounded-md border-2 border-warn bg-warn/10 p-3 shadow-[0_0_0_3px_rgba(204,137,0,0.10)]">
           <div className="text-[11px] font-semibold text-warn">
-            已設定 {BOX_TYPE_INFO[box.type].label} Q{box.question_number}，下一步請補這題難度
+            題幹 Q{box.question_number ?? "?"}：請標註難易度
           </div>
           <div className="mt-2 grid grid-cols-3 gap-1.5">
             {(["easy","medium","hard"] as Difficulty[]).map((d) => (
               <button
                 key={d}
-                onClick={() => onPatch(linkedQuestion.id, { difficulty: d })}
+                onClick={() => onPatch(box.id, { difficulty: d })}
                 className={
                   "h-9 rounded border text-[12px] font-semibold transition-colors " +
-                  (linkedQuestion.difficulty === d
+                  (box.difficulty === d
                     ? "border-ink bg-ink text-paper"
                     : "border-rule-2 bg-paper text-ink-2 hover:bg-rule/40")
                 }
@@ -1361,14 +1351,8 @@ function SelectedPanel({
             ))}
           </div>
           <div className="mt-2 text-[10px] leading-5 text-ink-3">
-            這會寫回 Q{box.question_number} 的題幹難度，答案框本身不另外記難度。
+            整題難易度設在題幹；選項／答案／詳解不需另外標。
           </div>
-        </div>
-      )}
-
-      {canGuideDifficulty && box.question_number != null && !linkedQuestion && (
-        <div className="rounded-md border border-warn/40 bg-warn/10 p-2 text-[11px] leading-5 text-warn">
-          這個框有 Q{box.question_number}，但目前找不到對應題幹框；請先建立或修正題幹 Q{box.question_number}，再設定難度。
         </div>
       )}
 

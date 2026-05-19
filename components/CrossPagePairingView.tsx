@@ -688,7 +688,6 @@ export function CrossPagePairingView() {
           {selected && (
             <PairingSelectedPanel
               box={selected}
-              targetQuestion={targetQuestion}
               onPatch={patchBox}
               onDelete={() => deleteBox(selected.id)}
             />
@@ -809,12 +808,10 @@ function QuestionPreview({ q }: { q: QuestionBox }) {
 
 function PairingSelectedPanel({
   box,
-  targetQuestion,
   onPatch,
   onDelete,
 }: {
   box: BookBox;
-  targetQuestion: QuestionBox | null;
   onPatch: (id: string, patch: Partial<Box>) => void;
   onDelete: () => void;
 }) {
@@ -846,19 +843,19 @@ function PairingSelectedPanel({
           />
         </label>
       </div>
-      {box.type === "answer" && targetQuestion && box.question_number === targetQuestion.question_number && (
+      {box.type === "question" && (
         <div className="mt-3 rounded-md border-2 border-warn bg-warn/10 p-3">
           <div className="text-[11px] font-semibold text-warn">
-            已設定答案 Q{box.question_number}，請補這題難度
+            題幹 Q{box.question_number ?? "?"}：請標註難易度
           </div>
           <div className="mt-2 grid grid-cols-3 gap-1.5">
             {(["easy", "medium", "hard"] as Difficulty[]).map((d) => (
               <button
                 key={d}
-                onClick={() => onPatch(targetQuestion.id, { difficulty: d })}
+                onClick={() => onPatch(box.id, { difficulty: d })}
                 className={
                   "h-9 rounded border text-[12px] font-semibold transition-colors " +
-                  (targetQuestion.difficulty === d
+                  (box.difficulty === d
                     ? "border-ink bg-ink text-paper"
                     : "border-rule-2 bg-paper text-ink-2 hover:bg-rule/40")
                 }
@@ -866,6 +863,9 @@ function PairingSelectedPanel({
                 {DIFFICULTY_LABEL[d]}
               </button>
             ))}
+          </div>
+          <div className="mt-2 text-[10px] leading-5 text-ink-3">
+            整題難易度設在題幹；選項／答案／詳解不需另外標。
           </div>
         </div>
       )}
