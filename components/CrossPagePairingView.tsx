@@ -163,14 +163,6 @@ export function CrossPagePairingView() {
     [allBoxes, targetQ],
   );
 
-  const stemDiffByQNum = useMemo(() => {
-    const m = new Map<number, Difficulty | null>();
-    for (const q of questions) {
-      m.set(q.question_number, q.difficulty ?? null);
-    }
-    return m;
-  }, [questions]);
-
   const targetStatus = useMemo(() => {
     const count = (type: BoxType) => targetBoxes.filter((b) => b.type === type).length;
     return {
@@ -285,6 +277,29 @@ export function CrossPagePairingView() {
     setAllBoxes((bs) => bs.map((b) => (b.id === id ? updated : b)));
     if (selected?.id === id) setSelected(updated);
   }, [selected]);
+
+  const handleSolutionDifficulty = useCallback(async (box: BookBox, difficulty: Difficulty) => {
+    await patchBox(box.id, { difficulty });
+    if (!book || box.question_number == null) return;
+    const { data, error } = await supabase().rpc("check_pairing_difficulty", {
+      p_book_id: book.id,
+      p_question_number: box.question_number,
+    });
+    if (error) {
+      console.warn("check_pairing_difficulty failed:", error.message);
+      return;
+    }
+    const row = (data as Array<{
+      question_difficulty: Difficulty | null;
+      solution_difficulty: Difficulty | null;
+      consistent: boolean;
+    }> | null)?.[0];
+    if (row && !row.consistent) {
+      const qLabel = row.question_difficulty ? DIFFICULTY_LABEL[row.question_difficulty] : "未設";
+      const sLabel = row.solution_difficulty ? DIFFICULTY_LABEL[row.solution_difficulty] : "未設";
+      alert(`⚠️ 難度不一致\n題幹 Q${box.question_number}：${qLabel}\n詳解：${sLabel}\n請確認哪個是對的。`);
+    }
+  }, [book, patchBox]);
 
   const deleteBox = useCallback(async (id: string) => {
     const { error } = await supabase().from("annotation_boxes").delete().eq("id", id);
@@ -616,9 +631,9 @@ export function CrossPagePairingView() {
                           x={b.bbox.x + 4}
                           y={b.bbox.y + 4}
                           text={(() => {
-                            const d = b.question_number != null
-                              ? stemDiffByQNum.get(b.question_number) ?? null
-                              : b.difficulty;
+                            // 只有題幹與詳解掛自己的 difficulty 標籤；其他 type 即使共享 question_number 也不掛
+                            // （以前 unit_title 框會跑出「Q7 簡單」就是因為錯誤地用了題幹的 difficulty）
+                            const d = (b.type === "question" || b.type === "solution") ? b.difficulty : null;
                             return `${BOX_TYPE_INFO[b.type].label}${b.question_number != null ? ` Q${b.question_number}` : ""}${d ? ` ${DIFFICULTY_LABEL[d]}` : ""}`;
                           })()}
                           fontSize={14}
@@ -734,6 +749,7 @@ export function CrossPagePairingView() {
               box={selected}
               onPatch={patchBox}
               onDelete={() => deleteBox(selected.id)}
+              onSolutionDifficulty={handleSolutionDifficulty}
             />
           )}
 
@@ -854,10 +870,12 @@ function PairingSelectedPanel({
   box,
   onPatch,
   onDelete,
+  onSolutionDifficulty,
 }: {
   box: BookBox;
   onPatch: (id: string, patch: Partial<Box>) => void;
   onDelete: () => void;
+  onSolutionDifficulty: (box: BookBox, difficulty: Difficulty) => void;
 }) {
   return (
     <Panel title="已選框">
@@ -908,8 +926,31 @@ function PairingSelectedPanel({
               </button>
             ))}
           </div>
+        </div>
+      )}
+      {box.type === "solution" && (
+        <div className="mt-3 rounded-md border-2 border-accent bg-accent/10 p-3">
+          <div className="text-[11px] font-semibold text-accent">
+            詳解 Q{box.question_number ?? "?"}：標註難易度（會與題幹比對）
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-1.5">
+            {(["easy", "medium", "hard"] as Difficulty[]).map((d) => (
+              <button
+                key={d}
+                onClick={() => onSolutionDifficulty(box, d)}
+                className={
+                  "h-9 rounded border text-[12px] font-semibold transition-colors " +
+                  (box.difficulty === d
+                    ? "border-ink bg-ink text-paper"
+                    : "border-rule-2 bg-paper text-ink-2 hover:bg-rule/40")
+                }
+              >
+                {DIFFICULTY_LABEL[d]}
+              </button>
+            ))}
+          </div>
           <div className="mt-2 text-[10px] leading-5 text-ink-3">
-            整題難易度設在題幹；選項／答案／詳解不需另外標。
+            若與題幹難度不一致會跳出警告通知，方便交叉確認。
           </div>
         </div>
       )}
