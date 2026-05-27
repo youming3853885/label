@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type TabKey = "kg" | "t0" | "upad12";
+type TabKey = "kg" | "t0" | "upad12" | "system";
 type Decision = "approved" | "rejected" | "revised";
 type QueueStatus = "all" | "pending" | "approved" | "rejected" | "revised";
 type SourceFilter = "all" | "concept3" | "quick";
@@ -58,6 +58,73 @@ const tabs = [
   },
 ] as const;
 
+// 放在側欄最下方（不在上面那組）：問途系統總覽。
+const SYSTEM_TAB = {
+  key: "system" as const,
+  label: "問途系統總覽",
+  eyebrow: "WENTU",
+  description: "問途各角色目前已上線的功能 + 測試用 admin 帳號。",
+};
+
+const WENTU_URL = "https://study.ezai.today";
+
+// 問途各角色「已上線」功能（給非技術夥伴看的總覽）。
+const WENTU_ROLES: { role: string; eyebrow: string; color: string; features: string[] }[] = [
+  {
+    role: "學生",
+    eyebrow: "STUDENT",
+    color: "bg-[#d6f3f1] border-[#8ecfca]",
+    features: [
+      "AI 家教蘇格拉底式引導解題（依國小/國中/高中學段自動調整用語）",
+      "拍照上傳題目（OCR 辨識，數學自動排版）",
+      "互動視覺化：把題目畫成可拖動參數的數學圖",
+      "解題對話可中途停止 / 換一題",
+      "真人老師解題（500 銀幣，24 小時內回覆）",
+      "弱點練習與「我的弱點」報告、歷史紀錄",
+      "解題結束滿意度回饋；銀幣錢包與兌換碼",
+    ],
+  },
+  {
+    role: "補習班（負責人）",
+    eyebrow: "CRAM SCHOOL",
+    color: "bg-[#ffe6b8] border-[#e7bd6a]",
+    features: [
+      "班級管理 + 學生 Excel / CSV 匯入",
+      "出勤 QR 打卡 + LINE 即時通知家長",
+      "學費收款（綠界 / 手動匯款）與電子發票",
+      "銀幣共用池 + 加購銀幣包（藍新金流：信用卡 / ATM）",
+      "LINE 自動回覆 + FAQ 知識庫",
+      "家長週報、滿意度問卷、催費、續班管理",
+      "一個帳號可管理多間補習班並切換",
+    ],
+  },
+  {
+    role: "系統管理員（admin）",
+    eyebrow: "ADMIN",
+    color: "bg-[#ffe0dc] border-[#e9a39a]",
+    features: [
+      "用戶管理：搜尋 / 停權 / 解除停權 / 直接加幣",
+      "真人解題審核佇列 + 老師分潤結算",
+      "好題待審入庫、視覺化失敗回報處理",
+      "知識圖譜（prerequisite 邊）審核",
+      "兌換碼產生、批次發幣",
+      "儀表板：使用量 / 新增用戶 / 月營收 / 解題滿意度",
+      "Token 流水、濫用紀錄、考卷管理",
+    ],
+  },
+  {
+    role: "解題老師",
+    eyebrow: "SOLVER",
+    color: "bg-[#d9f5df] border-[#95d6a2]",
+    features: [
+      "帳號由 admin 建立指派（不開放自助申請）",
+      "接收學生的真人解題題目並線上作答",
+      "完整解題流程（含多模態看圖）",
+      "每題固定 NT$50 分潤",
+    ],
+  },
+];
+
 const flow = [
   {
     title: "官方課綱",
@@ -98,7 +165,7 @@ export default function ReviewPortalPage() {
   const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const active = useMemo(
-    () => tabs.find((tab) => tab.key === activeTab) ?? tabs[0],
+    () => [...tabs, SYSTEM_TAB].find((tab) => tab.key === activeTab) ?? tabs[0],
     [activeTab],
   );
 
@@ -184,6 +251,39 @@ export default function ReviewPortalPage() {
                 開啟新分頁進入講義框選與標註。
               </p>
             </a>
+
+            <button
+              onClick={() => setActiveTab("system")}
+              className={
+                "w-full rounded-md border px-3 py-3 text-left transition " +
+                (activeTab === "system"
+                  ? "border-paper/25 bg-paper text-ink"
+                  : "border-paper/10 bg-white/5 text-paper/78 hover:bg-white/10")
+              }
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">
+                {SYSTEM_TAB.eyebrow}
+              </div>
+              <div className="mt-1 text-[15px] font-semibold">{SYSTEM_TAB.label}</div>
+              <p className="mt-1 text-[12px] leading-5 opacity-70">
+                問途各角色已上線功能 + 測試帳號。
+              </p>
+            </button>
+
+            <a
+              href={WENTU_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-md border border-paper/10 bg-white/5 px-3 py-3 text-paper/78 transition hover:bg-white/10"
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">
+                GO
+              </div>
+              <div className="mt-1 text-[15px] font-semibold">前往問途 ↗</div>
+              <p className="mt-1 text-[12px] leading-5 opacity-70">
+                開啟新分頁連到問途網站。
+              </p>
+            </a>
           </nav>
         </aside>
 
@@ -201,6 +301,7 @@ export default function ReviewPortalPage() {
           {activeTab === "kg" && <KnowledgeGraphTab />}
           {activeTab === "t0" && <T0ReviewTab />}
           {activeTab === "upad12" && <Upad12ReviewTab userEmail={user.email} />}
+          {activeTab === "system" && <SystemOverviewTab />}
         </section>
       </div>
     </main>
@@ -259,6 +360,59 @@ function LoginCard() {
         {msg && <p className="mt-3 text-[12.5px] text-danger">{msg}</p>}
       </div>
     </main>
+  );
+}
+
+function SystemOverviewTab() {
+  return (
+    <div className="mx-auto max-w-7xl px-5 py-8 space-y-6">
+      {/* 測試用 admin 帳號 */}
+      <div className="rounded-md border border-accent/30 bg-accent-soft p-5">
+        <div className="text-[12px] font-bold tracking-[0.18em] text-accent">測試用 ADMIN 帳號</div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div>
+            <div className="text-[11px] text-ink-3">登入網址</div>
+            <a
+              href={`${WENTU_URL}/login`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-[14px] font-medium text-accent underline break-all"
+            >
+              {WENTU_URL}/login ↗
+            </a>
+          </div>
+          <div>
+            <div className="text-[11px] text-ink-3">Email</div>
+            <div className="text-[15px] font-mono font-semibold text-ink">admin@test.com</div>
+          </div>
+          <div>
+            <div className="text-[11px] text-ink-3">密碼</div>
+            <div className="text-[15px] font-mono font-semibold text-ink">12341234</div>
+          </div>
+        </div>
+        <p className="mt-3 text-[12px] leading-6 text-ink-3">
+          僅供內部測試展示，請勿用於正式資料。
+        </p>
+      </div>
+
+      {/* 四個角色已上線功能 */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {WENTU_ROLES.map((r) => (
+          <div key={r.role} className={`rounded-md border p-5 ${r.color}`}>
+            <div className="text-[12px] font-bold tracking-[0.18em] text-ink/60">{r.eyebrow}</div>
+            <h3 className="mt-1 text-[22px] font-semibold text-ink">{r.role}</h3>
+            <ul className="mt-3 space-y-2">
+              {r.features.map((f, i) => (
+                <li key={i} className="flex gap-2 text-[14px] leading-7 text-ink-2">
+                  <span className="mt-[2px] shrink-0 text-ink/50">•</span>
+                  <span>{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
