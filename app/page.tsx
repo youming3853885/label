@@ -875,6 +875,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [serverTotal, setServerTotal] = useState<number | null>(null);
   const [globalTotal, setGlobalTotal] = useState<number | null>(null);
   const [globalReviewedTotal, setGlobalReviewedTotal] = useState<number | null>(null);
+  const [statusCounts, setStatusCounts] = useState<{ approved: number; rejected: number; revised: number } | null>(null);
   const [hasMoreRows, setHasMoreRows] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -915,6 +916,26 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       .neq("teacher_review_status", "pending");
     if (!countError) {
       setGlobalReviewedTotal(count ?? 0);
+    }
+  }, []);
+
+  const loadStatusCounts = useCallback(async () => {
+    const statuses = ["approved", "rejected", "revised"] as const;
+    const results = await Promise.all(
+      statuses.map(async (s) => {
+        const { count, error: countError } = await supabase()
+          .from("v_upad12_teacher_review_queue")
+          .select("id", { count: "exact", head: true })
+          .eq("teacher_review_status", s);
+        return countError ? null : count ?? 0;
+      }),
+    );
+    if (results.every((value) => value !== null)) {
+      setStatusCounts({
+        approved: results[0] as number,
+        rejected: results[1] as number,
+        revised: results[2] as number,
+      });
     }
   }, []);
 
@@ -1005,7 +1026,8 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
     void loadRows();
     void loadGlobalTotal();
     void loadGlobalReviewedTotal();
-  }, [loadRows, loadGlobalTotal, loadGlobalReviewedTotal]);
+    void loadStatusCounts();
+  }, [loadRows, loadGlobalTotal, loadGlobalReviewedTotal, loadStatusCounts]);
 
   useEffect(() => {
     if (loading || loadingAll || !hasMoreRows || rows.length === 0) return;
@@ -1127,6 +1149,22 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
     return base;
   }, [level, rows, serverTotal, subject]);
 
+  // 審查狀態各選項的「資料庫真實筆數」（與目前篩選無關，全部精確計數）
+  const statusOptionCounts = useMemo(() => {
+    if (statusCounts == null || globalTotal == null) return null;
+    const reviewed = statusCounts.approved + statusCounts.rejected + statusCounts.revised;
+    return {
+      pending: Math.max(0, globalTotal - reviewed),
+      approved: statusCounts.approved,
+      rejected: statusCounts.rejected,
+      revised: statusCounts.revised,
+      all: globalTotal,
+    };
+  }, [statusCounts, globalTotal]);
+
+  const statusCountSuffix = (key: "pending" | "approved" | "rejected" | "revised" | "all") =>
+    statusOptionCounts ? ` (${statusOptionCounts[key]})` : "";
+
   const decide = async (row: Upad12ReviewRow, decision: Decision) => {
     setSavingId(row.id);
     setError(null);
@@ -1159,6 +1197,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       const nextStatus = decision === "approved" ? "approved" : decision === "rejected" ? "rejected" : "revised";
       // 不在前端自己 +1（會越加越不準），改成審完直接跟資料庫要一次精確的「已審查」數字。
       void loadGlobalReviewedTotal();
+      void loadStatusCounts();
       setRows((current) =>
         current.map((item) =>
           item.id === row.id
@@ -1249,11 +1288,11 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
                 onChange={(event) => setStatus(event.target.value as QueueStatus)}
                 className="mt-1 h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
               >
-                <option value="pending">待審</option>
-                <option value="approved">通過</option>
-                <option value="rejected">退回</option>
-                <option value="revised">需修正</option>
-                <option value="all">全部</option>
+                <option value="pending">{`待審${statusCountSuffix("pending")}`}</option>
+                <option value="approved">{`通過${statusCountSuffix("approved")}`}</option>
+                <option value="rejected">{`退回${statusCountSuffix("rejected")}`}</option>
+                <option value="revised">{`需修正${statusCountSuffix("revised")}`}</option>
+                <option value="all">{`全部${statusCountSuffix("all")}`}</option>
               </select>
             </label>
             <label className="block">
@@ -1270,6 +1309,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
                 void loadRows(false);
                 void loadGlobalTotal();
                 void loadGlobalReviewedTotal();
+                void loadStatusCounts();
               }}
               className="h-10 w-full rounded-md border border-ink bg-ink px-4 text-[14px] font-semibold text-paper"
             >
