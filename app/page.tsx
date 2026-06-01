@@ -873,6 +873,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadingAll, setLoadingAll] = useState(false);
   const [serverTotal, setServerTotal] = useState<number | null>(null);
+  const [globalTotal, setGlobalTotal] = useState<number | null>(null);
   const [globalReviewedTotal, setGlobalReviewedTotal] = useState<number | null>(null);
   const [hasMoreRows, setHasMoreRows] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -897,6 +898,15 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       localStorage.setItem(REVIEWER_STORAGE_KEY, reviewerName.trim());
     }
   }, [reviewerName]);
+
+  const loadGlobalTotal = useCallback(async () => {
+    const { count, error: countError } = await supabase()
+      .from("v_upad12_teacher_review_queue")
+      .select("id", { count: "exact", head: true });
+    if (!countError) {
+      setGlobalTotal(count ?? 0);
+    }
+  }, []);
 
   const loadGlobalReviewedTotal = useCallback(async () => {
     const { count, error: countError } = await supabase()
@@ -993,8 +1003,9 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
 
   useEffect(() => {
     void loadRows();
+    void loadGlobalTotal();
     void loadGlobalReviewedTotal();
-  }, [loadRows, loadGlobalReviewedTotal]);
+  }, [loadRows, loadGlobalTotal, loadGlobalReviewedTotal]);
 
   useEffect(() => {
     if (loading || loadingAll || !hasMoreRows || rows.length === 0) return;
@@ -1146,9 +1157,8 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       setError(saveError.message);
     } else {
       const nextStatus = decision === "approved" ? "approved" : decision === "rejected" ? "rejected" : "revised";
-      if (row.teacher_review_status === "pending") {
-        setGlobalReviewedTotal((count) => (count == null ? count : count + 1));
-      }
+      // 不在前端自己 +1（會越加越不準），改成審完直接跟資料庫要一次精確的「已審查」數字。
+      void loadGlobalReviewedTotal();
       setRows((current) =>
         current.map((item) =>
           item.id === row.id
@@ -1174,7 +1184,7 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
       <div className="mx-auto grid max-w-7xl gap-4 lg:grid-cols-[260px_1fr]">
         <aside className="rounded-md border border-rule bg-paper/95 p-3 shadow-[0_12px_34px_rgba(28,37,34,.06)]">
           <div className="grid grid-cols-2 gap-2">
-            <StatCard label="知識點" value={summary.total} />
+            <StatCard label="知識點" value={globalTotal ?? summary.total} />
             <StatCard label="已審查" value={globalReviewedTotal ?? summary.approved + summary.rejected + summary.revised} tone="good" />
             <StatCard label="本清單" value={filteredRows.length} tone="warn" />
             <StatCard label="目前筆" value={filteredRows.length ? currentIndex + 1 : 0} />
@@ -1256,7 +1266,11 @@ function Upad12ReviewTab({ userEmail }: { userEmail?: string }) {
               />
             </label>
             <button
-              onClick={() => void loadRows(false)}
+              onClick={() => {
+                void loadRows(false);
+                void loadGlobalTotal();
+                void loadGlobalReviewedTotal();
+              }}
               className="h-10 w-full rounded-md border border-ink bg-ink px-4 text-[14px] font-semibold text-paper"
             >
               同步整理
