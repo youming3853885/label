@@ -274,52 +274,84 @@ export function AnnotatorView() {
   }, [book, boxes]);
   const nextUnitTitleNumber = bookUnitTitleMax + 1;
 
-  // Fetch every question box for the book — used by the answer-pass dropdown.
-  // Includes the source page's page_number for the "Q3 (第 X 頁)" hint.
-  useEffect(() => {
+  // Fetch every question box for the book — used by the answer-pass dropdown
+  // and the「難度標註進度」stat. Also pulls 詳解(solution) difficulty so a
+  // difficulty marked on the 詳解 (in the cross-page pairing tab) counts toward
+  // the question's progress even when the 題幹 itself isn't tagged.
+  const loadBookQuestions = useCallback(async () => {
     if (!book) return;
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase()
-        .from("annotation_boxes")
-        .select("id, question_number, page_id, bbox, difficulty, page:annotation_pages(page_number, png_path, width, height)")
-        .eq("book_id", book.id)
-        .eq("type", "question")
-        .not("question_number", "is", null)
-        .order("question_number")
-        .order("id", { ascending: true }); // deterministic tie-break when duplicate stems exist
-      if (cancelled) return;
-      const flat: BookQ[] = ((data as any[]) ?? [])
-        .map((r) => ({
-          id: r.id,
-          question_number: r.question_number,
-          page_id: r.page_id,
-          bbox: r.bbox,
-          difficulty: r.difficulty,
-          page_number: r.page?.page_number,
-          page_png_path: r.page?.png_path,
-          page_width: r.page?.width,
-          page_height: r.page?.height,
-        }));
-      // Dedup by question_number. Duplicates happen when a stem is re-drawn;
-      // keep the first box but adopt a difficulty from whichever duplicate
-      // has one set — difficulty is authored on the stem and re-drawn copies
-      // are often left blank.
-      const byNum = new Map<number, BookQ>();
-      for (const q of flat) {
-        const existing = byNum.get(q.question_number);
-        if (!existing) {
-          byNum.set(q.question_number, q);
-        } else if (!existing.difficulty && q.difficulty) {
-          byNum.set(q.question_number, { ...existing, difficulty: q.difficulty });
-        }
+    const { data } = await supabase()
+      .from("annotation_boxes")
+      .select("id, type, question_number, page_id, bbox, difficulty, page:annotation_pages(page_number, png_path, width, height)")
+      .eq("book_id", book.id)
+      .in("type", ["question", "solution"])
+      .not("question_number", "is", null)
+      .order("question_number")
+      .order("id", { ascending: true }); // deterministic tie-break when duplicate stems exist
+    const rows = (data as any[]) ?? [];
+    // 詳解難度：題號 → 難度（題幹沒標時用來補上）。
+    const solutionDiff = new Map<number, Difficulty>();
+    for (const r of rows) {
+      if (r.type === "solution" && r.difficulty && r.question_number != null && !solutionDiff.has(r.question_number)) {
+        solutionDiff.set(r.question_number, r.difficulty);
       }
-      setBookQuestions([...byNum.values()]);
-    })();
+    }
+    const flat: BookQ[] = rows
+      .filter((r) => r.type === "question")
+      .map((r) => ({
+        id: r.id,
+        question_number: r.question_number,
+        page_id: r.page_id,
+        bbox: r.bbox,
+        difficulty: r.difficulty,
+        page_number: r.page?.page_number,
+        page_png_path: r.page?.png_path,
+        page_width: r.page?.width,
+        page_height: r.page?.height,
+      }));
+    // Dedup by question_number. Duplicates happen when a stem is re-drawn;
+    // keep the first box but adopt a difficulty from whichever duplicate has
+    // one set — difficulty is authored on the stem and re-drawn copies are
+    // often left blank.
+    const byNum = new Map<number, BookQ>();
+    for (const q of flat) {
+      const existing = byNum.get(q.question_number);
+      if (!existing) {
+        byNum.set(q.question_number, q);
+      } else if (!existing.difficulty && q.difficulty) {
+        byNum.set(q.question_number, { ...existing, difficulty: q.difficulty });
+      }
+    }
+    // 題幹沒標難度 → 採用詳解的難度（讓「在詳解標的難度」也算進進度統計）。
+    for (const [qnum, q] of byNum) {
+      if (!q.difficulty && solutionDiff.has(qnum)) {
+        byNum.set(qnum, { ...q, difficulty: solutionDiff.get(qnum)! });
+      }
+    }
+    setBookQuestions([...byNum.values()]);
+  }, [book]);
+
+  // Refetch on mount / book change, and whenever this page's boxes change.
+  useEffect(() => {
+    loadBookQuestions();
+  }, [loadBookQuestions, boxes]);
+
+  // 跨分頁即時同步：配對分頁（或其他老師）寫入框時——例如在詳解標難度——
+  // 自動重抓，讓「難度標註進度」不必手動重整就更新。比照 CrossPagePairingView。
+  useEffect(() => {
+    if (!book || !annotatorName) return;
+    const channel = supabase()
+      .channel(`annotator-bookq:${book.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "annotation_boxes", filter: `book_id=eq.${book.id}` },
+        () => loadBookQuestions(),
+      )
+      .subscribe();
     return () => {
-      cancelled = true;
+      supabase().removeChannel(channel);
     };
-  }, [book, boxes]);
+  }, [book, annotatorName, loadBookQuestions]);
 
   // When user switches to answer pass, default pairing to the smallest Q.
   useEffect(() => {
