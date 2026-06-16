@@ -146,7 +146,7 @@ const flow = [
   },
   {
     title: "外部資料",
-    text: "UPAD12、題庫與教材只當參考證據，不直接變成正式知識。",
+    text: "題庫與教材只當參考證據，不直接變成正式知識。",
     color: "bg-paper border-ink shadow-[0_0_0_2px_rgba(26,26,26,0.08)]",
   },
   {
@@ -368,7 +368,7 @@ function LoginCard() {
       <div className="w-full max-w-sm">
         <div className="serif mb-1 text-[28px] font-semibold">label 審核入口</div>
         <p className="mb-6 text-[13.5px] leading-7 text-ink-3">
-          請輸入共用審核密碼。登入後可進行 T0 課綱審查、UPAD12 教師審核與講義標註。
+          請輸入共用審核密碼。登入後可進行 T0 課綱審查、教師審核與講義標註。
         </p>
         <input
           type="password"
@@ -791,7 +791,7 @@ function KnowledgeGraphTab() {
         <div className="mt-6 grid gap-3 md:grid-cols-4">
           {[
             "官方課綱是根，不讓外部資料反客為主。",
-            "UPAD12 只當外部覆蓋度與命題範圍參考。",
+            "外部資料只當覆蓋度與命題範圍參考。",
             "老師審核通過後，才可進正式知識圖譜流程。",
             "每筆資料都能追溯到來源、審核人與決策。"].
             map((point) => (

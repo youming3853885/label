@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "label · 課綱審核與講義標註",
-  description: "知識圖譜說明、T0 課綱審查、UPAD12 教師審核與講義標註入口。",
+  description: "知識圖譜說明、T0 課綱審查、教師審核與講義標註入口。",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
