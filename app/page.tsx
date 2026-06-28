@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type TabKey = "kg" | "t0" | "upad12" | "system" | "feedback";
+type TabKey = "kg" | "t0" | "upad12" | "system";
 type Decision = "approved" | "rejected" | "revised";
 type QueueStatus = "all" | "pending" | "approved" | "rejected" | "revised";
 type SourceFilter = "all" | "concept3" | "quick";
@@ -50,12 +50,7 @@ const tabs = [
     eyebrow: "T0",
     description: "抽樣審查、同步決策、匯出 CSV / JSON。",
   },
-  {
-    key: "upad12" as const,
-    label: "知識點 教師審核",
-    eyebrow: "POINTS",
-    description: "審查下載回來的全科知識點是否可作為 KG 參考證據。",
-  },
+  // 知識點 教師審核（upad12）已退場：移除側欄按鈕，保留元件與後端資料。
 ] as const;
 
 // 放在側欄最下方（不在上面那組）：問途系統總覽。
@@ -64,14 +59,6 @@ const SYSTEM_TAB = {
   label: "問途系統總覽",
   eyebrow: "WENTU",
   description: "問途各角色目前已上線的功能 + 測試用 admin 帳號。",
-};
-
-// 內測意見回饋（讓問途內測人員回報遇到的問題、Bug、建議）。
-const FEEDBACK_TAB = {
-  key: "feedback" as const,
-  label: "內測意見回饋",
-  eyebrow: "FEEDBACK",
-  description: "回報你在問途使用中遇到的問題、Bug 或建議，會直接進到 admin 後台。",
 };
 
 const WENTU_URL = "https://study.ezai.today";
@@ -174,7 +161,7 @@ export default function ReviewPortalPage() {
   const [loading, setLoading] = useState(true);
   const active = useMemo(
     () =>
-      [...tabs, SYSTEM_TAB, FEEDBACK_TAB].find((tab) => tab.key === activeTab) ??
+      [...tabs, SYSTEM_TAB].find((tab) => tab.key === activeTab) ??
       tabs[0],
     [activeTab],
   );
@@ -280,24 +267,6 @@ export default function ReviewPortalPage() {
               </p>
             </button>
 
-            <button
-              onClick={() => setActiveTab("feedback")}
-              className={
-                "w-full rounded-md border px-3 py-3 text-left transition " +
-                (activeTab === "feedback"
-                  ? "border-paper/25 bg-paper text-ink"
-                  : "border-paper/10 bg-white/5 text-paper/78 hover:bg-white/10")
-              }
-            >
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] opacity-60">
-                {FEEDBACK_TAB.eyebrow}
-              </div>
-              <div className="mt-1 text-[15px] font-semibold">{FEEDBACK_TAB.label}</div>
-              <p className="mt-1 text-[12px] leading-5 opacity-70">
-                回報問題、Bug、建議；直接進到 admin 後台。
-              </p>
-            </button>
-
             <a
               href={WENTU_URL}
               target="_blank"
@@ -330,7 +299,6 @@ export default function ReviewPortalPage() {
           {activeTab === "t0" && <T0ReviewTab />}
           {activeTab === "upad12" && <Upad12ReviewTab userEmail={user.email} />}
           {activeTab === "system" && <SystemOverviewTab />}
-          {activeTab === "feedback" && <FeedbackTab userId={user.id} />}
         </section>
       </div>
     </main>
@@ -442,312 +410,6 @@ function SystemOverviewTab() {
         ))}
       </div>
     </div>
-  );
-}
-
-// ──────────────────────────── 內測意見回饋表單 ────────────────────────────
-
-type FeedbackCategory = "bug" | "feature" | "question" | "other";
-type FeedbackSeverity = "" | "urgent" | "normal" | "low";
-
-const FEEDBACK_CATEGORIES: { value: FeedbackCategory; label: string }[] = [
-  { value: "bug", label: "Bug（功能壞掉、出錯）" },
-  { value: "feature", label: "功能建議" },
-  { value: "question", label: "操作疑問" },
-  { value: "other", label: "其他" },
-];
-
-const FEEDBACK_SEVERITIES: { value: FeedbackSeverity; label: string }[] = [
-  { value: "", label: "不指定" },
-  { value: "urgent", label: "很急（影響使用）" },
-  { value: "normal", label: "普通" },
-  { value: "low", label: "不急（建議改進）" },
-];
-
-const FEEDBACK_BUCKET = "feedback-screenshots";
-const FEEDBACK_REPORTER_KEY = "label.feedback.reporterName";
-
-interface PendingShot {
-  id: string;
-  file: File;
-  previewUrl: string;
-}
-
-function FeedbackTab({ userId }: { userId: string }) {
-  const [reporterName, setReporterName] = useState("");
-  const [category, setCategory] = useState<FeedbackCategory>("bug");
-  const [severity, setSeverity] = useState<FeedbackSeverity>("");
-  const [description, setDescription] = useState("");
-  const [pageUrl, setPageUrl] = useState("https://study.ezai.today/");
-  const [shots, setShots] = useState<PendingShot[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [successAt, setSuccessAt] = useState<number | null>(null);
-
-  // 名字記在 localStorage，下次自動帶入。
-  useEffect(() => {
-    setReporterName(localStorage.getItem(FEEDBACK_REPORTER_KEY) ?? "");
-  }, []);
-  useEffect(() => {
-    if (reporterName.trim()) {
-      localStorage.setItem(FEEDBACK_REPORTER_KEY, reporterName.trim());
-    }
-  }, [reporterName]);
-
-  // 卸載時清掉預覽 URL，避免漏記憶體。
-  useEffect(() => {
-    return () => {
-      shots.forEach((s) => URL.revokeObjectURL(s.previewUrl));
-    };
-  }, [shots]);
-
-  function addFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setErrorMsg("單張截圖最大 5 MB，請壓縮後再貼。");
-      return;
-    }
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setShots((prev) => [...prev, { id, file, previewUrl: URL.createObjectURL(file) }]);
-  }
-
-  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    let handled = false;
-    for (const item of Array.from(items)) {
-      if (item.kind === "file" && item.type.startsWith("image/")) {
-        const file = item.getAsFile();
-        if (file) {
-          addFile(file);
-          handled = true;
-        }
-      }
-    }
-    if (handled) e.preventDefault();
-  }
-
-  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    Array.from(e.dataTransfer.files ?? []).forEach(addFile);
-  }
-
-  function removeShot(id: string) {
-    setShots((prev) => {
-      const target = prev.find((s) => s.id === id);
-      if (target) URL.revokeObjectURL(target.previewUrl);
-      return prev.filter((s) => s.id !== id);
-    });
-  }
-
-  async function submit() {
-    setErrorMsg(null);
-    if (!reporterName.trim()) {
-      setErrorMsg("請填寫你的名字。");
-      return;
-    }
-    if (!description.trim()) {
-      setErrorMsg("請描述遇到的狀況。");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const client = supabase();
-      const uploadedPaths: string[] = [];
-      for (const s of shots) {
-        const ext = (s.file.name.split(".").pop() || "png").toLowerCase().slice(0, 5);
-        const key = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-        const { error: upErr } = await client.storage
-          .from(FEEDBACK_BUCKET)
-          .upload(key, s.file, { contentType: s.file.type, upsert: false });
-        if (upErr) throw upErr;
-        uploadedPaths.push(key);
-      }
-
-      const { error: insertErr } = await client.from("feedback_reports").insert({
-        reporter_name: reporterName.trim(),
-        reporter_uid: userId,
-        category,
-        severity: severity || null,
-        description: description.trim(),
-        page_url: pageUrl.trim() || null,
-        screenshot_paths: uploadedPaths,
-      });
-      if (insertErr) throw insertErr;
-
-      // 清空表單，但保留名字。
-      shots.forEach((s) => URL.revokeObjectURL(s.previewUrl));
-      setShots([]);
-      setDescription("");
-      setSeverity("");
-      setCategory("bug");
-      setPageUrl("https://study.ezai.today/");
-      setSuccessAt(Date.now());
-      window.setTimeout(() => setSuccessAt(null), 4000);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "送出失敗，請稍後再試。";
-      setErrorMsg(msg);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="mx-auto max-w-3xl px-5 py-8 space-y-5">
-      <div className="rounded-md border border-rule bg-[#fffdf8] p-4 text-[13px] leading-7 text-ink-2">
-        在問途任何頁面遇到問題、想到建議、看到 Bug，都歡迎在這裡回報。
-        資料會直接進到 admin 後台，由團隊處理。
-      </div>
-
-      {successAt && (
-        <div className="rounded-md border border-good/30 bg-good/10 px-4 py-3 text-[13px] text-good">
-          已收到，謝謝你的回報！
-        </div>
-      )}
-
-      {errorMsg && (
-        <div className="rounded-md border border-danger/30 bg-danger/10 px-4 py-3 text-[13px] text-danger">
-          {errorMsg}
-        </div>
-      )}
-
-      <div className="space-y-4 rounded-md border border-rule bg-paper p-5 shadow-[0_12px_34px_rgba(28,37,34,.06)]">
-        <Field label="你的名字" required>
-          <input
-            value={reporterName}
-            onChange={(e) => setReporterName(e.target.value)}
-            placeholder="例：王老師"
-            className="h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
-          />
-        </Field>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="問題類別" required>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as FeedbackCategory)}
-              className="h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
-            >
-              {FEEDBACK_CATEGORIES.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-
-          <Field label="嚴重程度">
-            <select
-              value={severity}
-              onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
-              className="h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
-            >
-              {FEEDBACK_SEVERITIES.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        <Field label="詳細描述（可直接 Ctrl+V 貼上截圖）" required>
-          <div
-            onDrop={handleDrop}
-            onDragOver={(e) => e.preventDefault()}
-            className="rounded-md border border-rule-2 bg-white"
-          >
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onPaste={handlePaste}
-              placeholder="請描述發生什麼事、步驟、預期結果與實際結果。截圖可直接 Ctrl+V 貼進來。"
-              className="min-h-40 w-full resize-y rounded-t-md bg-transparent p-3 text-[14px] leading-7 outline-none"
-            />
-            {shots.length > 0 && (
-              <div className="flex flex-wrap gap-2 border-t border-rule-2 bg-[#fbfaf6] p-2">
-                {shots.map((s) => (
-                  <div
-                    key={s.id}
-                    className="relative overflow-hidden rounded border border-rule bg-white"
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={s.previewUrl}
-                      alt="截圖預覽"
-                      className="block max-h-28"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeShot(s.id)}
-                      className="absolute right-1 top-1 rounded-full bg-black/60 px-2 py-0.5 text-[11px] text-paper hover:bg-black/80"
-                    >
-                      移除
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          <p className="mt-1 text-[11.5px] text-ink-3">
-            支援 PNG / JPG / WebP / GIF，單張最大 5 MB；也可拖檔進來。
-          </p>
-        </Field>
-
-        <Field label="發生在哪個頁面 URL">
-          <input
-            value={pageUrl}
-            onChange={(e) => setPageUrl(e.target.value)}
-            placeholder="https://study.ezai.today/..."
-            className="h-10 w-full rounded-md border border-rule-2 bg-white px-3 text-[14px]"
-          />
-        </Field>
-
-        <div className="flex justify-end gap-2 border-t border-rule pt-4">
-          <button
-            onClick={() => {
-              shots.forEach((s) => URL.revokeObjectURL(s.previewUrl));
-              setShots([]);
-              setDescription("");
-              setSeverity("");
-              setCategory("bug");
-              setPageUrl("https://study.ezai.today/");
-            }}
-            disabled={submitting}
-            className="h-10 rounded-md border border-rule-2 bg-white px-4 text-[13px] text-ink-2 disabled:opacity-50"
-          >
-            清空
-          </button>
-          <button
-            onClick={submit}
-            disabled={submitting}
-            className="h-10 rounded-md border border-ink bg-ink px-5 text-[13px] font-semibold text-paper disabled:opacity-50"
-          >
-            {submitting ? "送出中..." : "送出回報"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  required,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <div className="mb-1 text-[12.5px] font-semibold text-ink-2">
-        {label}
-        {required && <span className="ml-1 text-danger">*</span>}
-      </div>
-      {children}
-    </label>
   );
 }
 
